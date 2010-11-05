@@ -96,7 +96,65 @@ void ui_reset_progress();
 #define LOGD(...) do {} while (0)
 #endif
 
+// Dream-specific key codes by LeshaK
+// Modify for Samsung Spica i5700
+
+#define KEY_DREAM_HOME        227  // = KEY_HOME
+#define KEY_DREAM_RED         249  // = KEY_END
+#define KEY_DREAM_VOLUMEDOWN  209  // = KEY_VOLUMEDOWN
+#define KEY_DREAM_VOLUMEUP    201  // = KEY_VOLUMEUP
+#define KEY_DREAM_SYM         127  // = KEY_COMPOSE
+#define KEY_DREAM_MENU        211  // = KEY_MENU
+#define KEY_DREAM_BACK        212  // = KEY_BACK
+#define KEY_DREAM_FOCUS       211  // = KEY_HP (light touch on camera)
+#define KEY_DREAM_CAMERA      250  // = KEY_CAMERA
+#define KEY_DREAM_AT          215  // = KEY_EMAIL
+#define KEY_DREAM_GREEN       231
+#define KEY_DREAM_FATTOUCH    258  // = BTN_2 ???
+#define KEY_DREAM_BALL        272  // = BTN_MOUSE
+#define KEY_DREAM_TOUCH       330  // = BTN_TOUCH
+
+// For Samsung by LeshaK
+#define KEY_I5700_CENTER      204
+#define KEY_I5700_DOWN	      210
+#define KEY_I5700_UP          202
+
+//Redefine defaults
+#undef KEY_HOME
+#define KEY_HOME KEY_DREAM_HOME
+#undef KEY_END
+#define KEY_END KEY_DREAM_RED
+#undef KEY_VOLUMEDOWN
+#define KEY_VOLUMEDOWN KEY_DREAM_VOLUMEDOWN
+#undef KEY_VOLUMEUP
+#define KEY_VOLUMEUP KEY_DREAM_VOLUMEUP
+#undef KEY_COMPOSE
+#define KEY_COMPOSE KEY_DREAM_SYM
+#undef KEY_MENU
+#define KEY_MENU KEY_DREAM_MENU
+#undef KEY_BACK
+#define KEY_BACK KEY_DREAM_BACK
+#undef KEY_HP
+#define KEY_HP KEY_DREAM_FOCUS
+#undef KEY_CAMERA
+#define KEY_CAMERA KEY_DREAM_CAMERA
+#undef KEY_EMAIL
+#define KEY_EMAIL KEY_DREAM_AT
+#undef BTN_2
+#define BTN_2 KEY_DREAM_FATTOUCH
+#undef BTN_MOUSE
+#define BTN_MOUSE KEY_DREAM_BALL
+#undef BTN_TOUCH
+#define BTN_TOUCH KEY_DREAM_TOUCH
+#undef KEY_DOWN
+#define KEY_DOWN KEY_I5700_DOWN
+#undef KEY_UP
+#define KEY_UP KEY_I5700_UP
+#undef KEY_SEND
+#define KEY_SEND KEY_I5700_CENTER
+
 #define STRINGIFY(x) #x
 #define EXPAND(x) STRINGIFY(x)
+//#define DEBUG 1
 
 #endif  // RECOVERY_COMMON_H

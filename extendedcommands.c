@@ -332,7 +332,7 @@ void show_choose_zip_menu()
 
 // This was pulled from bionic: The default system command always looks
 // for shell in /system/bin/sh. This is bad.
-#define _PATH_BSHELL "/sbin/sh"
+#define _PATH_BSHELL "/sbin/ash"
 
 extern char **environ;
 int
@@ -692,7 +692,7 @@ void show_nandroid_advanced_restore_menu()
                                 NULL
     };
 
-    char* file = choose_file_menu("/sdcard/clockworkmod/backup/", NULL, advancedheaders);
+    char* file = choose_file_menu("/sdcard/clockworkdmod/backup/", NULL, advancedheaders);
     if (file == NULL)
         return;
 

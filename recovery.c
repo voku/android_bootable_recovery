@@ -51,6 +51,10 @@ static const struct option OPTIONS[] = {
 };
 
 static int allow_display_toggle = 1;
+static int do_reboot = 1;
+static int reboot_method = 1;
+static int multi = 0;
+char os[50];
 
 static const char *COMMAND_FILE = "CACHE:recovery/command";
 static const char *INTENT_FILE = "CACHE:recovery/intent";
@@ -353,11 +357,11 @@ get_menu_selection(char** headers, char** items, int menu_only) {
     int wrap_count = 0;
 
     while (chosen_item < 0 && chosen_item != GO_BACK) {
+		//ui_menu_select(); //Why was this not here?!
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
         int action = device_handle_key(key, visible);
-
         int old_selected = selected;
 
         if (action < 0) {
@@ -456,13 +460,18 @@ wipe_data(int confirm) {
 static void
 prompt_and_wait() {
     char** headers = prepend_title(MENU_HEADERS);
-    
+#ifdef DEBUG
+	LOGE("Prompt\n");
+#endif
     for (;;) {
         finish_recovery(NULL);
         ui_reset_progress();
 
         allow_display_toggle = 1;
         int chosen_item = get_menu_selection(headers, MENU_ITEMS, 0);
+#ifdef DEBUG
+		ui_print("Selected: %d\n",chosen_item);
+#endif
         allow_display_toggle = 0;
 
         // device-specific code may take some action here.  It may
@@ -532,6 +541,146 @@ prompt_and_wait() {
     }
 }
 
+static char
+        pre_menu()
+{
+    static char* headers[] = { 	"     Boot loader by Xmister",
+                                "   -- Samsung Spica i5700 --",
+                                "",
+                                "Use Up/Down and OK to select",
+                                "",
+                                "Choose a recovery:",
+                                "",
+                                NULL };
+
+    // these constants correspond to elements of the items[] list.
+#define ITEM_RECOVERY      0
+
+	static char* list[20];
+    int err;
+    int init = 1;
+    int chosen_item=-1;
+	
+	list[0]=NULL;
+	
+	//In case if something goes wrong
+	ui_print("."); //9
+	finish_recovery(NULL);
+	
+	
+    for (;;) {
+		if (init) {
+			ui_print("."); //10
+			if (ensure_root_path_mounted("SDCARD:")) {
+				LOGE("BL: Cant' mount SDCARD\n");
+				return 1;
+			}
+			//Give a chance to filesystems to unmount properly
+			ensure_root_path_unmounted("SYSTEM:");
+			ensure_root_path_unmounted("DATA:");
+			ensure_root_path_unmounted("CACHE:");
+			
+			
+			int i;
+			for (i=0; list[i] != NULL; i++) {
+				free(list[i]);
+			}
+			list[0]=NULL;
+			
+			ui_print("."); //11
+			
+			FILE* f = fopen("/sdcard/.bootlst", "r");
+			if (f == NULL) {
+				ui_print("\n");
+				return 1;
+			}
+				list[ITEM_RECOVERY]="Start Internal";
+				static char* prefix="Start ";
+				i=ITEM_RECOVERY+1;
+				while(!feof(f))
+				{
+					char* temp=calloc(50,sizeof(char));
+					list[i]=malloc(50 * sizeof(char));
+					fgets(temp,50,f);
+					int j=0;
+					for(j=0;j<50;j++) {
+						if(temp[j] == '\n' || temp[j] == '\r') {
+							temp[j]='\0';
+							break;
+						}
+					}
+					int x;
+					for (x=0;x<i;x++)
+						if (!strcmp(&(list[x][6]),temp)) break;
+					if ( i == x ) {
+						strcpy(list[i],prefix);
+						strncpy(&(list[i][6]),temp,42);
+						i++;
+					}
+				}
+				list[i-1]=NULL;
+				fclose(f);
+			if ( i > ITEM_RECOVERY+1) multi=1;
+			else {
+				multi=0;
+				return 1;
+			}
+			ui_print("."); //12
+			//rest a bit, to let FS's to be detected and unmounted properly
+			sleep(3);
+			ui_print("."); //13
+			int err=0;
+			if (ensure_root_path_unmounted("SYSTEM:")) {
+				LOGE("BL: Cant' unmount SYSTEM\n");
+				err=1;
+			}
+			if (ensure_root_path_unmounted("DATA:")){
+				LOGE("BL: Cant' unmount SYSTEM\n");
+				err=1;
+			}
+			if (ensure_root_path_unmounted("CACHE:")){
+				LOGE("BL: Cant' unmount SYSTEM\n");
+				err=1;
+			}
+			ui_print("."); //14
+			if (err) return err;
+			ui_clear_key_queue();
+			init=0;
+			err = 0;
+			
+			//Write back the filtered list while the user chooses	
+			pid_t pid = fork();
+			if ( pid == 0 )	{
+				f = fopen("/sdcard/.bootlst","w");
+				if ( f != NULL ) {
+					for (i=0; list[i] != NULL; i++ ) {
+						fputs(&(list[i][6]),f);
+						fputc('\n',f);
+					}
+					check_and_fclose(f,"/sdcard/.bootlst");
+				}
+				_exit(-1);
+			}
+			else {
+				chosen_item = get_menu_selection(headers,list,0);
+				ui_print(".\n"); //15
+			}
+		}
+
+        if (chosen_item >= ITEM_RECOVERY) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            if (chosen_item > ITEM_RECOVERY) strcpy(os,&(list[chosen_item][6]));
+			else os[0]='\0';
+			ui_end_menu();
+			prompt_and_wait();
+			if (do_reboot) return 0;
+			else init=1;
+		}
+	}
+return 1;
+}
+
 static void
 print_property(const char *key, const char *name, void *cookie) {
     fprintf(stderr, "%s=%s\n", key, name);
@@ -561,20 +710,35 @@ main(int argc, char **argv) {
             return setprop_main(argc, argv);
 		return busybox_driver(argc, argv);
 	}
-    __system("/sbin/postrecoveryboot.sh");
-    create_fstab();
+    //create_fstab();
     
     int is_user_initiated_recovery = 0;
     time_t start = time(NULL);
 
+#ifdef DEBUG
+	LOGW("LOG\n");
+#endif
     // If these fail, there's not really anywhere to complain...
     freopen(TEMPORARY_LOG_FILE, "a", stdout); setbuf(stdout, NULL);
+#ifdef DEBUG
+	LOGW(" 1\n");
+#endif
     freopen(TEMPORARY_LOG_FILE, "a", stderr); setbuf(stderr, NULL);
+#ifdef DEBUG
+	LOGE(" 2\n");
+#endif
     fprintf(stderr, "Starting recovery on %s", ctime(&start));
-
+#ifdef DEBUG
+	LOGW("UI\n");
+#endif
     ui_init();
     ui_print(EXPAND(RECOVERY_VERSION)"\n");
+    ui_print("Loading. Please wait...");
+#ifdef DEBUG
+	LOGW("BOOT\n");
+#endif
     get_args(&argc, &argv);
+    ui_print("."); //4
 
     int previous_runs = 0;
     const char *send_intent = NULL;
@@ -595,19 +759,23 @@ main(int argc, char **argv) {
         }
     }
 
+	ui_print("."); //5
     device_recovery_start();
 
+	ui_print("."); //6
     fprintf(stderr, "Command:");
     for (arg = 0; arg < argc; arg++) {
         fprintf(stderr, " \"%s\"", argv[arg]);
     }
     fprintf(stderr, "\n\n");
 
+	ui_print("."); //7
     property_list(print_property, NULL);
     fprintf(stderr, "\n");
 
     int status = INSTALL_SUCCESS;
-    
+
+    ui_print("."); //8
     RecoveryCommandContext ctx = { NULL };
     if (register_update_commands(&ctx)) {
         LOGE("Can't install update commands\n");
@@ -650,19 +818,40 @@ main(int argc, char **argv) {
         }
     }
 
+	int ret;
     if (status != INSTALL_SUCCESS && !is_user_initiated_recovery) ui_set_background(BACKGROUND_ICON_ERROR);
-    if (status != INSTALL_SUCCESS || ui_text_visible()) prompt_and_wait();
+    if (status != INSTALL_SUCCESS || ui_text_visible()) pre_menu();
+
+    /*On error, or if choosed, show recovery*/
+    if ( ret ) prompt_and_wait();
 
 #ifndef BOARD_HAS_NO_MISC_PARTITION
     // If there is a radio image pending, reboot now to install it.
+    you_should_set_BOARD_HAS_NO_MISC_PARTITION_for_spica_in_BoardConfig.mk
     maybe_install_firmware_update(send_intent);
 #endif
 
     // Otherwise, get ready to boot the main system...
-    finish_recovery(send_intent);
-    ui_print("Rebooting...\n");
-    sync();
-    reboot(RB_AUTOBOOT);
+    if (do_reboot) {
+		sync();
+		if ( reboot_method < 2 )finish_recovery(send_intent);
+		else {
+			system("/xbin/reboot recovery");
+			return EXIT_SUCCESS;
+		}
+			
+		if (!reboot_method) {
+			ui_print("Shutting down...\n");
+			sync();
+			reboot(RB_POWER_OFF);
+		}
+		else 
+		{
+			ui_print("Rebooting...\n");
+			sync();
+			reboot(RB_AUTOBOOT);
+		}
+	}
     return EXIT_SUCCESS;
 }
 

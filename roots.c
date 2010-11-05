@@ -40,26 +40,104 @@ static const char g_mtd_device[] = "@\0g_mtd_device";
 static const char g_mmc_device[] = "@\0g_mmc_device";
 static const char g_raw[] = "@\0g_raw";
 static const char g_package_file[] = "@\0g_package_file";
+static int check_need=1;
 
 static RootInfo g_roots[] = {
     { "BOOT:", g_mtd_device, NULL, "boot", NULL, g_raw, NULL },
     { "CACHE:", CACHE_DEVICE, NULL, "cache", "/cache", CACHE_FILESYSTEM, CACHE_FILESYSTEM_OPTIONS },
     { "DATA:", DATA_DEVICE, NULL, "userdata", "/data", DATA_FILESYSTEM, DATA_FILESYSTEM_OPTIONS },
+	{ "SYSTEM:", SYSTEM_DEVICE, NULL, "system", "/system", SYSTEM_FILESYSTEM, SYSTEM_FILESYSTEM_OPTIONS },
 #ifdef HAS_DATADATA
     { "DATADATA:", DATADATA_DEVICE, NULL, "datadata", "/datadata", DATADATA_FILESYSTEM, DATADATA_FILESYSTEM_OPTIONS },
 #endif
-    { "MISC:", g_mtd_device, NULL, "misc", NULL, g_raw, NULL },
     { "PACKAGE:", NULL, NULL, NULL, NULL, g_package_file, NULL },
     { "RECOVERY:", g_mtd_device, NULL, "recovery", "/", g_raw, NULL },
     { "SDCARD:", SDCARD_DEVICE_PRIMARY, SDCARD_DEVICE_SECONDARY, NULL, "/sdcard", "vfat", NULL },
     { "SDEXT:", SDEXT_DEVICE, NULL, NULL, "/sd-ext", SDEXT_FILESYSTEM, NULL },
-    { "SYSTEM:", SYSTEM_DEVICE, NULL, "system", "/system", SYSTEM_FILESYSTEM, SYSTEM_FILESYSTEM_OPTIONS },
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw, NULL },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL, NULL },
 };
 #define NUM_ROOTS (sizeof(g_roots) / sizeof(g_roots[0]))
 
 // TODO: for SDCARD:, try /dev/block/mmcblk0 if mmcblk0p1 fails
+
+static int
+internal_root_mounted(const RootInfo *info)
+{
+    if (info->mount_point == NULL) {
+        return -1;
+    }
+//xxx if TMP: (or similar) just say "yes"
+
+    /* See if this root is already mounted.
+     */
+    int ret = scan_mounted_volumes();
+    if (ret < 0) {
+        return ret;
+    }
+    const MountedVolume *volume;
+    volume = find_mounted_volume_by_mount_point(info->mount_point);
+    if (volume != NULL) {
+        /* It's already mounted.
+         */
+        return 0;
+    }
+    return -1;
+}
+
+
+void recheck() {
+	check_need=1;
+}
+
+static void check_fs() {
+	LOGI("Checking FS types\n");
+	ui_print("Filesystems:\n");
+	int i;
+	RootInfo *info;
+       for (i = 1 ;i < 4 ;i++){
+          info = &g_roots[i];
+          if ( internal_root_mounted(info) < 0 ) {
+			  if(!chdir(info->mount_point)){
+				mkdir(info->mount_point, 0755);  // in case it doesn't already exist
+			  } else chdir("/");
+			  if ( !strncmp(info->device,"/sdcard/",8) ) {
+				  strcpy(info->filesystem,"ext4");
+				  const char* options = "nodev,nosuid,noatime,nodiratime,data=ordered";
+				  info->filesystem_options=malloc(strlen(options)+1);
+				  strcpy(info->filesystem_options,options);
+			  } else {
+				  info->filesystem=calloc(5,sizeof(char));
+				  if ( !mount(info->device, info->mount_point, "rfs", MS_NODEV | MS_NOSUID, "codepage=utf8,xattr,check=no")) {
+					  strcpy(info->filesystem,"rfs");
+					  const char* options = "nodev,nosuid,codepage=utf8,xattr,check=no";
+					  info->filesystem_options=malloc(strlen(options)+1);
+					  strcpy(info->filesystem_options,options);
+				  }
+				  else if ( !mount(info->device, info->mount_point, "ext2", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
+					  strcpy(info->filesystem,"ext2");
+					  const char* options = "nodev,nosuid,noatime,nodiratime";
+					  info->filesystem_options=malloc(strlen(options)+1);
+					  strcpy(info->filesystem_options,options);
+				  }
+				  else if ( !mount(info->device, info->mount_point, "ext4", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
+					  strcpy(info->filesystem,"ext4");
+					  const char* options = "nodev,nosuid,noatime,nodiratime,data=ordered";
+					  info->filesystem_options=malloc(strlen(options)+1);
+					  strcpy(info->filesystem_options,options);
+				  }
+				  else {
+					  strcpy(info->filesystem,"auto");
+					  if (info->filesystem_options != NULL) {
+						  free(info->filesystem_options);
+						  info->filesystem_options=NULL;
+					  }
+				  }
+			  }
+		  }
+		  ui_print(" %s %s\n",info->name,info->filesystem);
+       }
+ }
 
 const RootInfo *
 get_root_info_for_path(const char *root_path)
@@ -75,6 +153,12 @@ get_root_info_for_path(const char *root_path)
     if (*c == '\0') {
         return NULL;
     }
+
+	if (check_need) {
+		check_need=0;
+		check_fs();
+	}
+    
     size_t len = c - root_path + 1;
     size_t i;
     for (i = 0; i < NUM_ROOTS; i++) {
@@ -176,30 +260,6 @@ translate_root_path(const char *root_path, char *out_buf, size_t out_buf_len)
     return out_buf;
 }
 
-static int
-internal_root_mounted(const RootInfo *info)
-{
-    if (info->mount_point == NULL) {
-        return -1;
-    }
-//xxx if TMP: (or similar) just say "yes"
-
-    /* See if this root is already mounted.
-     */
-    int ret = scan_mounted_volumes();
-    if (ret < 0) {
-        return ret;
-    }
-    const MountedVolume *volume;
-    volume = find_mounted_volume_by_mount_point(info->mount_point);
-    if (volume != NULL) {
-        /* It's already mounted.
-         */
-        return 0;
-    }
-    return -1;
-}
-
 int
 is_root_path_mounted(const char *root_path)
 {
@@ -217,7 +277,7 @@ static int mount_internal(const char* device, const char* mount_point, const cha
     }
     else {
         char mount_cmd[PATH_MAX];
-        const char* options = filesystem_options == NULL ? "noatime,nodiratime,nodev" : filesystem_options;
+        const char* options = filesystem_options == NULL ? "noatime,nodiratime,nodev,nosuid" : filesystem_options;
         sprintf(mount_cmd, "mount -t %s -o%s %s %s", filesystem, options, device, mount_point);
         return __system(mount_cmd);
     }

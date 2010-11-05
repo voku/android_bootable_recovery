@@ -63,8 +63,8 @@ static const struct { gr_surface* surface; const char *name; } BITMAPS[] = {
     { &gProgressBarIndeterminate[3],    "indeterminate4" },
     { &gProgressBarIndeterminate[4],    "indeterminate5" },
     { &gProgressBarIndeterminate[5],    "indeterminate6" },
-    { &gProgressBarEmpty,               "progress_empty" },
-    { &gProgressBarFill,                "progress_fill" },
+    { &gProgressBarEmpty,               "progress_bar_empty" },
+    { &gProgressBarFill,                "progress_bar_fill" },
     { NULL,                             NULL },
 };
 
@@ -223,7 +223,9 @@ static void update_screen_locked(void)
 {
     if (!ui_has_initialized) return;
     draw_screen_locked();
-    gr_flip();
+    //As FB can't informed in Spica, we should fill it's buffer to flip
+	gr_flip();
+	gr_flip();
 }
 
 // Updates only the progress bar, if possible, otherwise redraws the screen.
@@ -237,7 +239,9 @@ static void update_progress_locked(void)
     } else {
         draw_progress_locked();  // Draw only the progress bar
     }
-    gr_flip();
+    //As FB can't informed in Spica, we should fill it's buffer to flip
+	gr_flip();
+	gr_flip();
 }
 
 // Keeps the progress bar updated, even when the process is otherwise busy.
@@ -525,18 +529,17 @@ int ui_menu_select(int sel) {
     if (show_menu > 0) {
         old_sel = menu_sel;
         menu_sel = sel;
-
         if (menu_sel < 0) menu_sel = menu_items + menu_sel;
         if (menu_sel >= menu_items) menu_sel = menu_sel - menu_items;
 
 
-        if (menu_sel < menu_show_start && menu_show_start > 0) {
+      /*  if (menu_sel < menu_show_start && menu_show_start > 0) {
             menu_show_start = menu_sel;
         }
 
         if (menu_sel - menu_show_start + menu_top >= text_rows) {
             menu_show_start = menu_sel + menu_top - text_rows + 1;
-        }
+        }*/
 
         sel = menu_sel;
 
