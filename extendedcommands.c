@@ -41,6 +41,9 @@
 #include "extendedcommands.h"
 #include "nandroid.h"
 
+static const char *SDCARD_PATH = "SDCARD:";
+#define SDCARD_PATH_LENGTH 7
+
 int signature_check_enabled = 1;
 int script_assert_enabled = 1;
 static const char *SDCARD_PACKAGE_FILE = "SDCARD:update.zip";
@@ -81,15 +84,13 @@ int install_zip(const char* packagefilepath)
     return 0;
 }
 
-char* INSTALL_MENU_ITEMS[] = {  "apply sdcard:update.zip",
-                                "choose zip from sdcard",
-                                "toggle signature verification",
-                                "toggle script asserts",
+char* INSTALL_MENU_ITEMS[] = {  "Choose zip from sdcard",
+                                "Toggle signature verification",
+                                "Toggle script asserts",
                                 NULL };
-#define ITEM_APPLY_SDCARD     0
-#define ITEM_CHOOSE_ZIP       1
-#define ITEM_SIG_CHECK        2
-#define ITEM_ASSERTS          3
+#define ITEM_CHOOSE_ZIP       0
+#define ITEM_SIG_CHECK        1
+#define ITEM_ASSERTS          2
 
 void show_install_update_menu()
 {
@@ -108,12 +109,6 @@ void show_install_update_menu()
             case ITEM_SIG_CHECK:
                 toggle_signature_check();
                 break;
-            case ITEM_APPLY_SDCARD:
-            {
-                if (confirm_selection("Confirm install?", "Yes - Install /sdcard/update.zip"))
-                    install_zip(SDCARD_PACKAGE_FILE);
-                break;
-            }
             case ITEM_CHOOSE_ZIP:
                 show_choose_zip_menu();
                 break;
@@ -738,6 +733,330 @@ void show_nandroid_advanced_restore_menu()
     }
 }
 
+static int
+        choose_tar_file(char* sfpath) //by LeshaK
+{
+    static char* headers[] = { "Choose backup TAR file",
+                               "",
+                               "Use Up/Down keys to highlight;",
+                               "click OK to select.",
+                               "",
+                               NULL };
+
+    char path[PATH_MAX] = "";
+    DIR *dir;
+    struct dirent *de;
+    char **files;
+    int total = 0;
+    int retval = 1;
+    int i;
+
+    if (ensure_root_path_mounted(SDCARD_PATH) != 0) {
+        LOGE("Can't mount %s\n", SDCARD_PATH);
+        return 1;
+    }
+
+    if (translate_root_path(SDCARD_PATH, path, sizeof(path)) == NULL) {
+        LOGE("Bad path %s", path);
+        return 2;
+    }
+
+    strcat(path, "samdroid/");
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        LOGE("Couldn't open directory %s", path);
+        return 3;
+    }
+
+    /* count how many files we're looking at */
+    while ((de = readdir(dir)) != NULL) {
+        char *extension = strrchr(de->d_name, '.');
+        if (extension == NULL || de->d_name[0] == '.') {
+            continue;
+        } else if (!strcasecmp(extension, ".tar")) {
+            total++;
+        }
+    }
+
+    /* allocate the array for the file list menu */
+    files = (char **) malloc((total + 1) * sizeof(*files));
+    files[total] = NULL;
+
+    /* set it up for the second pass */
+    rewinddir(dir);
+
+    /* put the names in the array for the menu */
+    i = 0;
+    while ((de = readdir(dir)) != NULL) {
+        char *extension = strrchr(de->d_name, '.');
+        if (extension == NULL || de->d_name[0] == '.') {
+            continue;
+        } else if (!strcasecmp(extension, ".tar")) {
+            files[i] = (char *) malloc(SDCARD_PATH_LENGTH + strlen(de->d_name) + 1);
+            //strcpy(files[i], SDCARD_PATH);
+            //strcat(files[i], de->d_name);
+            strcpy(files[i], de->d_name);
+            i++;
+        }
+    }
+
+    /* close directory handle */
+    if (closedir(dir) < 0) {
+        LOGE("Failure closing directory %s", path);
+        goto out;
+    }
+
+    int selected = 0;
+    int chosen_item = -1;
+
+    ui_reset_progress();
+    for (;;) {
+
+        chosen_item = get_menu_selection(headers,files,0);
+
+        if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+            strcpy(sfpath, files[chosen_item]);
+            retval = 0;
+            break;
+        }
+    }
+
+    out:
+
+    for (i = 0; i < total; i++) {
+        free(files[i]);
+    }
+    free(files);
+    return retval;
+}
+
+static void
+        tar_backup() //by Leshak
+{
+    static char* headers[] = { 	"Choose what you want to backup?"
+                                "",
+                                "Use Up/Down and OK to select",
+                                "",
+                                NULL };
+
+#define BRTYPE_BACK			0
+#define BRTYPE_B_SYS		1
+#define BRTYPE_B_DATA	 	2
+#define BRTYPE_HL1		 	3
+#define BRTYPE_RESTORE	 	4
+#define BRTYPE_REST_FORMAT 	5
+
+    char st[255];
+    static char* backup_parts[] = { "/system", "/data"};
+    static char* backup_file[] = { "Sys", "Data"};
+
+    static char* items[] = { 	"Back to main menu",
+                                "TAR backup system",
+                                "TAR backup data",
+                                "    -------",
+                                "TAR restore",
+                                "TAR restore (+ format)",
+                                NULL };
+
+
+    for (;;) {
+
+        int chosen_item = get_menu_selection(headers, items,0);
+
+        if (chosen_item >= BRTYPE_RESTORE) {
+            char sfpath[255];
+            if (choose_tar_file(st) == 0) {
+                ui_print("\n-- Press HOME to confirm, or");
+    	        ui_print("\n-- any other key to abort..");
+                if (ui_wait_key() == KEY_DREAM_HOME) {
+                    switch (chosen_item) {
+                    case BRTYPE_REST_FORMAT:
+                        ui_print("\nFormating ");
+                        if (strstr(st, "_Sys.")) {
+                            if (!ensure_root_path_unmounted("SYSTEM:")) {
+                                ui_print("/system");
+                                if (!format_root_device("SYSTEM:")) ui_print("ok");
+                            }
+                        }
+                        if (strstr(st, "_Data.")) {
+                            if (!ensure_root_path_unmounted("DATA:")) {
+                                ui_print("/data");
+                                if (!format_root_device("DATA:")) ui_print("ok");
+                            }
+                        }
+						case BRTYPE_RESTORE:
+                        strcpy(sfpath, "/sdcard/samdroid/");
+                        strcat(sfpath, st);
+
+                        ui_print("\nMount ");
+                        if (strstr(st, "_Sys.")) {
+                            ui_print("/system");
+                            if (ensure_root_path_mounted("SYSTEM:")) { ui_print("\nError mount /system\n"); return; }
+                        }
+                        if (strstr(st, "_Data.")) {
+                            ui_print("/data");
+                            if (ensure_root_path_mounted("DATA:")) { ui_print("\nError mount /data\n"); return; }
+                        }
+
+                        ui_print("\nRestoring..");
+
+                        pid_t pid = fork();
+                        if (pid == 0) {
+                            chdir("/");
+                            char *args[] = {"/xbin/tar", "-x","-f", sfpath, NULL};
+                            execv("/xbin/tar", args);
+                            fprintf(stderr, "E:Can't backup\n(%s)\n", strerror(errno));
+                            _exit(-1);
+                        }
+
+                        int status;
+
+                        while (waitpid(pid, &status, 0) == 0) {
+                            ui_print(".");
+                            sleep(1);
+                        }
+                        ui_print("\n");
+
+                        if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+                            LOGE("Can't extract tar file %s\n", st);
+                        } else {
+                            ui_print("\nRestore complete.\n");
+                        }
+                        break;
+                    }
+                    continue;
+                }
+            }
+            ui_print("\nData restore aborted.\n");
+            continue;
+        }
+
+        if (chosen_item >= 0 && chosen_item < BRTYPE_HL1) {
+            if (chosen_item == BRTYPE_BACK) break;
+
+            ui_print("\n-- Press HOME to confirm, or");
+            ui_print("\n-- any other key to abort..");
+            int confirm_wipe = ui_wait_key();
+            if (confirm_wipe == KEY_DREAM_HOME) {
+                switch (chosen_item) {
+                case BRTYPE_B_SYS:
+                    if (ensure_root_path_mounted("SYSTEM:")) { ui_print("\nError mount /system\n"); return; }
+                    break;
+                case BRTYPE_B_DATA:
+                    if (ensure_root_path_mounted("DATA:")) { ui_print("\nError mount /data\n"); return; }
+                    break;
+                }
+                switch (chosen_item) {
+                case BRTYPE_B_SYS:
+                case BRTYPE_B_DATA:
+                    if (ensure_root_path_mounted("SDCARD:")) { ui_print("\nError mount sdcard\n"); return; }
+                    ui_print("\nBackuping: ");
+                    ui_print(backup_parts[chosen_item-1]);
+                    ui_print("\n");
+
+                    // create backup folder
+                    mkdir("/sdcard/samdroid", 0777);
+
+                    // create file name
+                    time_t rawtime;
+                    struct tm * ti;
+                    time ( &rawtime );
+                    ti = localtime ( &rawtime );
+                    strftime(st,255,"/sdcard/samdroid/Backup_%Y%m%d-%H%M%S_",ti);
+                    strcat(st, backup_file[chosen_item-1]);
+                    strcat(st, ".tar");
+
+                    pid_t pid = fork();
+                    if (pid == 0) {
+                        char *args[] = {"/xbin/busybox", "tar", "-c", "--exclude=*RFS_LOG.LO*", "-f", st, backup_parts[chosen_item-1], NULL};
+                        execv("/xbin/busybox", args);
+                        fprintf(stderr, "E:Can't backup\n(%s)\n", strerror(errno));
+                        _exit(-1);
+                    }
+
+                    int status;
+
+                    while (waitpid(pid, &status, 0) == 0) {
+                        ui_print(".");
+                        sleep(1);
+                    }
+                    ui_print("\n");
+
+                    if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+                        LOGE("Can't create tar file %s\n", st);
+                    } else {
+                        ui_print("Backup complete.\n");
+                    }
+                    break;
+                }
+
+            } else {
+                ui_print("\nData backup aborted.\n");
+            }
+            if (!ui_text_visible()) break;
+        }
+    }
+}
+
+static void samdroid_backup()
+{
+	if (ensure_root_path_mounted("SDCARD:") != 0) {
+		ui_print("Can't mount sdcard\n");
+	} else {
+		ui_print("\nPerforming backup");
+		pid_t pid = fork();
+		if (pid == 0) {
+			char *args[] = {"/xbin/bash", "-c", "/xbin/samdroid backup", "1>&2", NULL};
+			execv("/xbin/bash", args);
+			fprintf(stderr, "E:Can't run samdroid\n(%s)\n", strerror(errno));
+			_exit(-1);
+		}
+
+		int status;
+
+		while (waitpid(pid, &status, 0) == 0) {
+			ui_print(".");
+			sleep(1);
+		}
+		ui_print("\n");
+
+		if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+			ui_print("Error running samdroid backup. Backup not performed.\n\n");
+		} else {
+			ui_print("Backup complete!\nUse Odin for restore\n\n");
+		}
+	}
+}
+
+
+void show_backup_menu()
+{
+	static char* headers[] = {  "Backups and Restore",
+                                "",
+                                NULL 
+    };
+
+    static char* list[] = { "TAR Backup", 
+                            "Samdroid Backup (Odin)",
+                            NULL
+    };
+
+    int chosen_item = get_menu_selection(headers, list, 0);
+    switch (chosen_item)
+    {
+        case 0:
+            tar_backup();
+            break;
+        case 1:
+            samdroid_backup();
+            break;
+    }
+}
+
 void show_nandroid_menu()
 {
     static char* headers[] = {  "Nandroid",
@@ -795,9 +1114,7 @@ void show_advanced_menu()
                                 NULL
     };
 
-    static char* list[] = { "Reboot Recovery",
-                            "Wipe Dalvik Cache",
-                            "Wipe Battery Stats",
+    static char* list[] = { "Wipe Battery Stats",
                             "Report Error",
                             "Key Test",
 #ifndef BOARD_HAS_SMALL_RECOVERY
@@ -815,33 +1132,15 @@ void show_advanced_menu()
         switch (chosen_item)
         {
             case 0:
-                __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, "recovery");
-                break;
-            case 1:
-            {
-                if (0 != ensure_root_path_mounted("DATA:"))
-                    break;
-                ensure_root_path_mounted("SDEXT:");
-                ensure_root_path_mounted("CACHE:");
-                if (confirm_selection( "Confirm wipe?", "Yes - Wipe Dalvik Cache")) {
-                    __system("rm -r /data/dalvik-cache");
-                    __system("rm -r /cache/dalvik-cache");
-                    __system("rm -r /sd-ext/dalvik-cache");
-                }
-                ensure_root_path_unmounted("DATA:");
-                ui_print("Dalvik Cache wiped.\n");
-                break;
-            }
-            case 2:
             {
                 if (confirm_selection( "Confirm wipe?", "Yes - Wipe Battery Stats"))
                     wipe_battery_stats();
                 break;
             }
-            case 3:
+            case 1:
                 handle_failure(1);
                 break;
-            case 4:
+            case 2:
             {
                 ui_print("Outputting key codes.\n");
                 ui_print("Go back to end debugging.\n");
@@ -856,7 +1155,7 @@ void show_advanced_menu()
                 while (action != GO_BACK);
                 break;
             }
-            case 5:
+            case 3:
             {
                 static char* ext_sizes[] = { "128M",
                                              "256M",
@@ -897,7 +1196,7 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
-            case 6:
+            case 4:
             {
                 ensure_root_path_mounted("SYSTEM:");
                 ensure_root_path_mounted("DATA:");

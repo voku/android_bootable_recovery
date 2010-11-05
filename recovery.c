@@ -321,10 +321,19 @@ erase_root(const char *root) {
 
 static char**
 prepend_title(char** headers) {
-    char* title[] = { EXPAND(RECOVERY_VERSION),
+	char* current;
+	if ( strlen(os) ) {
+		current=calloc(60,sizeof(char));
+		strcpy(current,"     OS: ");
+		strcat(current,os);
+	} else current = "     OS: Internal";
+
+	char* title[] = { EXPAND(RECOVERY_VERSION),
+                      "",
+                      current,
                       "",
                       NULL };
-
+                      
     // count the number of lines in our title, plus the
     // caller-provided headers.
     int count = 0;
@@ -457,12 +466,270 @@ wipe_data(int confirm) {
     ui_print("Data wipe complete.\n");
 }
 
+static void end_recovery() {
+	static char* headers[] = { 	"Choose a method"
+                                "",
+                                "Use Up/Down and OK to select",
+                                "",
+                                NULL };
+
+#define HALT_BACK	 		0
+#define HALT_REBOOT		 	1
+#define HALT_HALT			2
+#define HALT_RECOVERY 		3
+
+    static char* items[] = { 	"Back to main menu",
+                                "Reboot to system",
+                                "Shut down",
+                                "Reboot to recovery",
+                                NULL };
+
+
+
+    int chosen_item = -1;
+    
+    for (;;) {
+        chosen_item=get_menu_selection(headers,items,0);
+        
+        switch (chosen_item) {
+			case HALT_BACK:
+				do_reboot=0;
+				return;
+			case HALT_REBOOT:
+				do_reboot=1;
+				reboot_method=1;
+				return;
+			case HALT_RECOVERY:
+				do_reboot=1;
+				reboot_method=2;
+				return;
+			case HALT_HALT:
+				do_reboot=1;
+				reboot_method=0;
+				return;
+			}
+		}
+}
+
+static void init_os (char** items,int boot) {    
+    ensure_root_path_unmounted("SYSTEM:");
+    ensure_root_path_unmounted("DATA:");
+    ensure_root_path_mounted("SDCARD:");
+    
+    if ( !strlen(os) ) {
+				RootInfo* info=get_root_info_for_path("SYSTEM:");
+				info->device="/dev/stl6";
+				
+				info=get_root_info_for_path("DATA:");
+				info->device="/dev/stl5";
+				return;
+			}
+    
+    RootInfo* info=get_root_info_for_path("SYSTEM:");
+    char* filename;
+    filename=calloc(50,sizeof(char));
+    sprintf(filename,"/sdcard/%s/system.img",os);
+    info->device=filename;
+    
+    info=get_root_info_for_path("DATA:");
+    sprintf(filename,"/sdcard/%s/data.img",os);
+    info->device=filename;
+    
+    items[boot]=calloc(70,sizeof(char));
+    strcpy(items[boot],"Boot ");
+    strcat(items[boot],os);
+    strcat(items[boot]," ->");
+    
+				char *args[] = {"/xbin/mknod", "/dev/loop0", "b", "7", "0", NULL};          
+				pid_t pid = fork();
+				if (pid == 0) {
+					execv("/xbin/mknod", args);
+					fprintf(stderr, "E:Can't make loop0\n(%s)\n", strerror(errno));
+					_exit(-1);
+					}
+				int status;
+
+				while (waitpid(pid, &status, 0) == 0) {
+					sleep(1);
+				}
+				
+				char *args2[] = {"/xbin/mknod", "/dev/loop1", "b", "7", "1", NULL};          
+				pid = fork();
+				if (pid == 0) {
+					execv("/xbin/mknod", args2);
+					fprintf(stderr, "E:Can't make loop1\n(%s)\n", strerror(errno));
+					_exit(-1);
+					}
+
+				while (waitpid(pid, &status, 0) == 0) {
+					sleep(1);
+				}
+}
+
+void start_os() {
+			if ( !strlen(os) ) {
+				ui_print("You can't start internal os from here!\n");
+				return;
+			}
+            ui_print("\nINIT New OS...");
+            char* file_name;
+            char* dir_name;
+            FILE* f;
+            int err;
+          
+                file_name = malloc(60 * sizeof(char));
+                strcpy(file_name,"/sdcard/");
+                strcat(file_name,os);
+                dir_name = malloc( (strlen(file_name)+1)*sizeof(char) );
+                strcpy(dir_name,file_name);
+                strcat(file_name,"/init.sh");
+            
+			if (  ( f=fopen(file_name,"r") )  )	{
+				fclose(f); 
+				chdir(dir_name);
+				char *args[] = {"/xbin/ash", file_name, NULL};          
+				pid_t pid = fork();
+				if (pid == 0) {
+					execv("/xbin/ash", args);
+					fprintf(stderr, "E:Can't run %s\n(%s)\n",file_name, strerror(errno));
+					_exit(-1);
+					}
+				int status;
+
+				while (waitpid(pid, &status, 0) == 0) {
+					sleep(1);
+					ui_print(".");
+				}
+				ui_print("done\nBooting New OS..\nPlease wait...");
+				ui_end_menu();
+				finish_recovery(NULL);
+				args[0]=NULL;
+				execv("/init_new", args);
+				do_reboot=0;
+			}
+			else {
+				ui_print("\n%s not exists!\n",file_name);
+				err=1;
+			}
+			free(dir_name);
+			free(file_name);
+}
+
+void show_wipe_menu() { //by LeshaK
+	static char* headers[] = { 	"Choose what you want to wipe?"
+                                "",
+                                "Use Up/Down and OK to select",
+                                "",
+                                NULL };
+
+#define WTYPE_BACK	 		0
+#define WTYPE_DATA_CACHE 	1
+#define WTYPE_CACHE	 		2
+#define WTYPE_DELVIK_CACHE	3
+
+    static char* items[] = { 	"Back to main menu",
+                                "Wipe data/cache (factory reset)",
+                                "Wipe cache",
+                                "Wipe dalvik-cache",
+                                NULL };
+
+
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        chosen_item = get_menu_selection(headers,items,0);
+
+
+        if (chosen_item >= 0) {
+            if (chosen_item == WTYPE_BACK) break;
+
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            ui_print("\n-- This will ERASE your data!");
+            ui_print("\n-- Press HOME to confirm, or");
+            ui_print("\n-- any other key to abort..");
+            int confirm_wipe = ui_wait_key();
+            if (confirm_wipe == KEY_DREAM_HOME) {
+              	ui_print("\nWiping data...\n");
+                switch (chosen_item) {
+                case WTYPE_DATA_CACHE:
+                    erase_root("DATA:");
+                case WTYPE_CACHE:
+                    erase_root("CACHE:");
+                    ui_print("Data wipe complete.\n");
+                    break;
+                case WTYPE_DELVIK_CACHE: {
+                        if (ensure_root_path_mounted("DATA:") != 0) {
+                            ui_print("Can't mount DATA\n");
+                        } else {
+                            ui_print("Formatting DATA:dalvik-cache..");
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                char *args[] = {"/xbin/rm", "-r", "/data/dalvik-cache", NULL};
+                                execv("/xbin/rm", args);
+                                fprintf(stderr, "E:Can't wipe dalvik-cache\n(%s)\n", strerror(errno));
+    	                        _exit(-1);
+                            }
+
+    	                    int status;
+
+                            while (waitpid(pid, &status, 0) == 0) {
+                                ui_print(".");
+                                sleep(1);
+    	                    }
+                            ui_print("\n");
+
+            	            if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+                                ui_print("Error wiping dalvik-cache.\n\n");
+                            } else {
+                                ui_print("Data wipe complete.\n");
+                            }
+                        }
+                    }
+                    break;
+                }
+            } else {
+                ui_print("\nData wipe aborted.\n");
+            }
+
+            if (!ui_text_visible()) break;
+            break;
+        }
+
+	
+    }
+}
+
 static void
 prompt_and_wait() {
     char** headers = prepend_title(MENU_HEADERS);
+    char** items = MENU_ITEMS;
 #ifdef DEBUG
 	LOGE("Prompt\n");
 #endif
+
+	init_os(items,ITEM_CHOOSE_OS);  //Set the pointers to the actual device/image
+	
+	recheck();  //We should recheck the Filesystems.
+	
+	if ( multi ) items[ITEM_BACK] = "<- Choose another OS";
+	else items[ITEM_BACK] = "<- Recheck Filesystems";
+
+	/*FS INFO*/
+    ui_print("%s Filesystems:\n",os);
+		RootInfo * fst = (char *)get_root_info_for_path("SYSTEM:");
+		ui_print(" SYSTEM:\t%s\n",fst->filesystem);
+		fst = (char *)get_root_info_for_path("DATA:");
+		ui_print(" DATA:\t%s\n",fst->filesystem);
+		fst = (char *)get_root_info_for_path("CACHE:");
+		ui_print(" CACHE:\t%s\n",fst->filesystem);
+	ui_print("\n\n");
+	
     for (;;) {
         finish_recovery(NULL);
         ui_reset_progress();
@@ -481,21 +748,13 @@ prompt_and_wait() {
 
         switch (chosen_item) {
             case ITEM_REBOOT:
-                return;
+                do_reboot=0;
+				end_recovery();
+				if (do_reboot) return;
+                else break;
 
-            case ITEM_WIPE_DATA:
-                wipe_data(ui_text_visible());
-                if (!ui_text_visible()) return;
-                break;
-
-            case ITEM_WIPE_CACHE:
-                if (confirm_selection("Confirm wipe?", "Yes - Wipe Cache"))
-                {
-                    ui_print("\n-- Wiping cache...\n");
-                    erase_root("CACHE:");
-                    ui_print("Cache wipe complete.\n");
-                    if (!ui_text_visible()) return;
-                }
+            case ITEM_WIPE:
+                show_wipe_menu();
                 break;
 
             case ITEM_APPLY_SDCARD:
@@ -528,8 +787,8 @@ prompt_and_wait() {
             case ITEM_INSTALL_ZIP:
                 show_install_update_menu();
                 break;
-            case ITEM_NANDROID:
-                show_nandroid_menu();
+            case ITEM_BACKUP:
+                show_backup_menu();
                 break;
             case ITEM_PARTITION:
                 show_partition_menu();
@@ -537,6 +796,12 @@ prompt_and_wait() {
             case ITEM_ADVANCED:
                 show_advanced_menu();
                 break;
+            case ITEM_CHOOSE_OS:
+                start_os();
+                break;
+            case ITEM_BACK:
+				do_reboot=0;
+				return;
         }
     }
 }
@@ -733,7 +998,7 @@ main(int argc, char **argv) {
 #endif
     ui_init();
     ui_print(EXPAND(RECOVERY_VERSION)"\n");
-    ui_print("Loading. Please wait...");
+    ui_print("Loading. Please wait...\n");
 #ifdef DEBUG
 	LOGW("BOOT\n");
 #endif
@@ -836,7 +1101,8 @@ main(int argc, char **argv) {
 		sync();
 		if ( reboot_method < 2 )finish_recovery(send_intent);
 		else {
-			system("/xbin/reboot recovery");
+			ui_print("Rebooting to recovery...\n");
+			__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, "recovery");
 			return EXIT_SUCCESS;
 		}
 			

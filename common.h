@@ -157,4 +157,11 @@ void ui_reset_progress();
 #define EXPAND(x) STRINGIFY(x)
 //#define DEBUG 1
 
+#ifndef WIFEXITED
+#define WIFEXITED(status)       (((status) & 0xff) == 0)
+#endif /* !defined WIFEXITED */
+#ifndef WEXITSTATUS
+#define WEXITSTATUS(status)     (((status) >> 8) & 0xff)
+#endif /* !defined WEXITSTATUS */
+
 #endif  // RECOVERY_COMMON_H

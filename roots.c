@@ -92,7 +92,6 @@ void recheck() {
 
 static void check_fs() {
 	LOGI("Checking FS types\n");
-	ui_print("Filesystems:\n");
 	int i;
 	RootInfo *info;
        for (i = 1 ;i < 4 ;i++){
@@ -135,7 +134,6 @@ static void check_fs() {
 				  }
 			  }
 		  }
-		  ui_print(" %s %s\n",info->name,info->filesystem);
        }
  }
 
@@ -408,6 +406,89 @@ format_root_device(const char *root)
         LOGW("format_root_device: can't resolve \"%s\"\n", root);
         return -1;
     }
+
+    if (info->mount_point != NULL) {
+        /* Don't try to format a mounted device.
+         */
+        int ret = ensure_root_path_unmounted(root);
+        if (ret < 0) {
+            LOGW("format_root_device: can't unmount \"%s\"\n", root);
+            return ret;
+        }
+    }
+
+    //Handle MMC device types
+    if(info->device == g_mmc_device) {
+        mmc_scan_partitions();
+        const MmcPartition *partition;
+        partition = mmc_find_partition_by_name(info->partition_name);
+        if (partition == NULL) {
+            LOGE("format_root_device: can't find mmc partition \"%s\"\n",
+                    info->partition_name);
+            return -1;
+        }
+        if (!strcmp(info->filesystem, "ext3")) {
+            if(mmc_format_ext3(partition))
+                LOGE("\n\"%s\" wipe failed!\n", info->partition_name);
+        }
+    }
+
+    else {
+        pid_t pid = fork();
+		 if (pid == 0) {
+		     if (info->filesystem != NULL && strncmp(info->filesystem, "ext",3) == 0) {
+	                char fst[10];
+	                sprintf(fst,"-T %s",info->filesystem);
+	                //We should create /etc/mtab
+						__system("rm /etc"); //Success only if it's a symlink
+						struct stat st;
+						if(stat("/etc",&st)) {
+							mkdir("/etc",0777);
+						}
+						FILE* f=fopen("/etc/mtab","w");
+						if ( f != NULL ) fclose(f);
+		         LOGW("format: %s as %s\n", info->device, fst);
+	                if (strncmp(info->filesystem, "ext4",4) == 0) {					
+						///xbin/mke2fs -T ext4 -F -q -m 0 -b 4096 -O ^huge_file,extent /sdcard/cm6/data.img
+	                   char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m 0", "-b 4096", "-O ^huge_file,extent", info->device, NULL};
+	                   execv("/xbin/mke2fs", args);
+	                } else {
+	                   char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m 0", "-b 4096", info->device, NULL};
+	                   execv("/xbin/mke2fs", args);
+	                }
+	                LOGE("E:Can't run mke2fs format [%s]\n", strerror(errno));       
+		     } 
+		     else if (info->filesystem != NULL && strcmp(info->filesystem, "rfs")==0){
+		          LOGW("format: %s as rfs\n", info->device);
+	                 char* args[] = {"/xbin/stl.format", info->device, NULL};
+	                 execv("/xbin/stl.format", args);
+	                 fprintf(stderr, "E:Can't run STL format [%s]\n", strerror(errno));
+	            }
+	         else {
+				 //We couldn't detect FS, so formatting as default RFS
+				 LOGW("Fallback format: %s as rfs\n", info->device);
+	                 char* args[] = {"/xbin/stl.format", info->device, NULL};
+	                 execv("/xbin/stl.format", args);
+	                 fprintf(stderr, "E:Can't run STL format [%s]\n", strerror(errno));
+				}
+	        _exit(-1);
+		 }
+		 
+	        int status;
+	
+	        while (waitpid(pid, &status, 0) == 0) {
+	            ui_print(".");
+	            sleep(1);
+	        }
+	        ui_print("\n");
+	
+	        if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+	            LOGW("format_root_device: can't erase \"%s\"\n", root);
+		    return -1;
+	        }
+		return 0;
+		}
+    
     if (info->mount_point != NULL && info->device == g_mtd_device) {
         /* Don't try to format a mounted device.
          */
@@ -444,22 +525,6 @@ format_root_device(const char *root)
             } else {
                 return 0;
             }
-        }
-    }
-
-    //Handle MMC device types
-    if(info->device == g_mmc_device) {
-        mmc_scan_partitions();
-        const MmcPartition *partition;
-        partition = mmc_find_partition_by_name(info->partition_name);
-        if (partition == NULL) {
-            LOGE("format_root_device: can't find mmc partition \"%s\"\n",
-                    info->partition_name);
-            return -1;
-        }
-        if (!strcmp(info->filesystem, "ext3")) {
-            if(mmc_format_ext3(partition))
-                LOGE("\n\"%s\" wipe failed!\n", info->partition_name);
         }
     }
 

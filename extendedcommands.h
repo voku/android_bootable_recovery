@@ -28,6 +28,9 @@ show_partition_menu();
 void
 show_choose_zip_menu();
 
+void
+show_backup_menu();
+
 int
 install_zip(const char* packagefilepath);
 
