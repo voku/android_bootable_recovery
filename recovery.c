@@ -1092,7 +1092,7 @@ main(int argc, char **argv) {
 
 	int ret;
     if (status != INSTALL_SUCCESS && !is_user_initiated_recovery) ui_set_background(BACKGROUND_ICON_ERROR);
-    if (status != INSTALL_SUCCESS || ui_text_visible()) pre_menu();
+    if (status != INSTALL_SUCCESS || ui_text_visible()) ret=pre_menu();
 
     /*On error, or if choosed, show recovery*/
     if ( ret ) prompt_and_wait();
