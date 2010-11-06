@@ -3,6 +3,7 @@ Based on ClockworkMod Recovery 2.5.1.0
 
 Features:
 - Filesystem check (Supports RFS, EXT2, EXT4)
+- Automatic e2fsck for EXT2 & EXT4
 - Multi-System recovery
 - Multi-Boot (BootLoader)
 - Filesystem conversion ( between RFS, EXT2, EXT4 )
