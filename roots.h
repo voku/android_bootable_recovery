@@ -128,6 +128,8 @@ int format_root_device(const char *root);
 
 void recheck();
 
+void create_mtab();
+
 typedef struct {
     const char *name;
     const char *device;

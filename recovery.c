@@ -29,6 +29,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include "bootloader.h"
 #include "common.h"
@@ -473,13 +474,11 @@ static void end_recovery() {
                                 "",
                                 NULL };
 
-#define HALT_BACK	 		0
-#define HALT_REBOOT		 	1
-#define HALT_HALT			2
-#define HALT_RECOVERY 		3
+#define HALT_REBOOT		 	0
+#define HALT_HALT			1
+#define HALT_RECOVERY 		2
 
-    static char* items[] = { 	"Back to main menu",
-                                "Reboot to system",
+    static char* items[] = { 	"Reboot to system",
                                 "Shut down",
                                 "Reboot to recovery",
                                 NULL };
@@ -490,11 +489,14 @@ static void end_recovery() {
     
     for (;;) {
         chosen_item=get_menu_selection(headers,items,0);
+
+        if ( chosen_item == GO_BACK ) {
+			do_reboot=0;
+			reboot_method=1;
+			return;
+		}
         
         switch (chosen_item) {
-			case HALT_BACK:
-				do_reboot=0;
-				return;
 			case HALT_REBOOT:
 				do_reboot=1;
 				reboot_method=1;
@@ -512,10 +514,6 @@ static void end_recovery() {
 }
 
 static void init_os (char** items,int boot) {    
-    ensure_root_path_unmounted("SYSTEM:");
-    ensure_root_path_unmounted("DATA:");
-    ensure_root_path_mounted("SDCARD:");
-    
     if ( !strlen(os) ) {
 				RootInfo* info=get_root_info_for_path("SYSTEM:");
 				info->device="/dev/stl6";
@@ -524,6 +522,12 @@ static void init_os (char** items,int boot) {
 				info->device="/dev/stl5";
 				return;
 			}
+
+	recheck();  //We should recheck the Filesystems.
+
+	ensure_root_path_unmounted("SYSTEM:");
+    ensure_root_path_unmounted("DATA:");
+    ensure_root_path_mounted("SDCARD:");
     
     RootInfo* info=get_root_info_for_path("SYSTEM:");
     char* filename;
@@ -532,13 +536,13 @@ static void init_os (char** items,int boot) {
     info->device=filename;
     
     info=get_root_info_for_path("DATA:");
+    filename=calloc(50,sizeof(char)); //Wasn't here before...big mistake, causing the two device to use the same image.
     sprintf(filename,"/sdcard/%s/data.img",os);
     info->device=filename;
     
     items[boot]=calloc(70,sizeof(char));
     strcpy(items[boot],"Boot ");
     strcat(items[boot],os);
-    strcat(items[boot]," ->");
     
 				char *args[] = {"/xbin/mknod", "/dev/loop0", "b", "7", "0", NULL};          
 				pid_t pid = fork();
@@ -549,7 +553,7 @@ static void init_os (char** items,int boot) {
 					}
 				int status;
 
-				while (waitpid(pid, &status, 0) == 0) {
+				while (waitpid(pid, &status, WNOHANG) == 0) {
 					sleep(1);
 				}
 				
@@ -561,7 +565,7 @@ static void init_os (char** items,int boot) {
 					_exit(-1);
 					}
 
-				while (waitpid(pid, &status, 0) == 0) {
+				while (waitpid(pid, &status, WNOHANG) == 0) {
 					sleep(1);
 				}
 }
@@ -596,7 +600,7 @@ void start_os() {
 					}
 				int status;
 
-				while (waitpid(pid, &status, 0) == 0) {
+				while (waitpid(pid, &status, WNOHANG) == 0) {
 					sleep(1);
 					ui_print(".");
 				}
@@ -622,13 +626,11 @@ void show_wipe_menu() { //by LeshaK
                                 "",
                                 NULL };
 
-#define WTYPE_BACK	 		0
-#define WTYPE_DATA_CACHE 	1
-#define WTYPE_CACHE	 		2
-#define WTYPE_DELVIK_CACHE	3
+#define WTYPE_DATA_CACHE 	0
+#define WTYPE_CACHE	 		1
+#define WTYPE_DELVIK_CACHE	2
 
-    static char* items[] = { 	"Back to main menu",
-                                "Wipe data/cache (factory reset)",
+    static char* items[] = { 	"Wipe data/cache (factory reset)",
                                 "Wipe cache",
                                 "Wipe dalvik-cache",
                                 NULL };
@@ -642,10 +644,9 @@ void show_wipe_menu() { //by LeshaK
     for (;;) {
         chosen_item = get_menu_selection(headers,items,0);
 
+		if (chosen_item == GO_BACK) break;
 
         if (chosen_item >= 0) {
-            if (chosen_item == WTYPE_BACK) break;
-
             // turn off the menu, letting ui_print() to scroll output
             // on the screen.
             ui_end_menu();
@@ -678,7 +679,7 @@ void show_wipe_menu() { //by LeshaK
 
     	                    int status;
 
-                            while (waitpid(pid, &status, 0) == 0) {
+                            while (waitpid(pid, &status, WNOHANG) == 0) {
                                 ui_print(".");
                                 sleep(1);
     	                    }
@@ -714,11 +715,11 @@ prompt_and_wait() {
 #endif
 
 	init_os(items,ITEM_CHOOSE_OS);  //Set the pointers to the actual device/image
-	
+
 	recheck();  //We should recheck the Filesystems.
 	
-	if ( multi ) items[ITEM_BACK] = "<- Choose another OS";
-	else items[ITEM_BACK] = "<- Recheck Filesystems";
+	if ( multi ) items[ITEM_BACK] = "Choose another OS";
+	else items[ITEM_BACK] = "Recheck Filesystems";
 
 	/*FS INFO*/
     ui_print("%s Filesystems:\n",os);
@@ -892,7 +893,7 @@ static char
 			}
 			ui_print("."); //12
 			//rest a bit, to let FS's to be detected and unmounted properly
-			sleep(3);
+			//sleep(3);
 			ui_print("."); //13
 			int err=0;
 			if (ensure_root_path_unmounted("SYSTEM:")) {
@@ -941,6 +942,11 @@ static char
 			prompt_and_wait();
 			if (do_reboot) return 0;
 			else init=1;
+		}
+		else if ( chosen_item == GO_BACK ) {
+			do_reboot=1;
+			reboot_method=1;
+			return 0;
 		}
 	}
 return 1;
@@ -999,6 +1005,7 @@ main(int argc, char **argv) {
     ui_init();
     ui_print(EXPAND(RECOVERY_VERSION)"\n");
     ui_print("Loading. Please wait...\n");
+    ui_set_show_text(1);
 #ifdef DEBUG
 	LOGW("BOOT\n");
 #endif

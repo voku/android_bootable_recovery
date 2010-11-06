@@ -28,6 +28,7 @@
 #include "mtdutils/mounts.h"
 #include "mmcutils/mmcutils.h"
 #include "minzip/Zip.h"
+#include "minzip/DirUtil.h"
 #include "roots.h"
 #include "common.h"
 
@@ -40,7 +41,7 @@ static const char g_mtd_device[] = "@\0g_mtd_device";
 static const char g_mmc_device[] = "@\0g_mmc_device";
 static const char g_raw[] = "@\0g_raw";
 static const char g_package_file[] = "@\0g_package_file";
-static int check_need=1;
+static int check_need=0; //We don't need to check in pre_menu
 
 static RootInfo g_roots[] = {
     { "BOOT:", g_mtd_device, NULL, "boot", NULL, g_raw, NULL },
@@ -90,6 +91,21 @@ void recheck() {
 	check_need=1;
 }
 
+//We are actually not using it, but mkfs and e2fsck look for it.
+void create_mtab() {
+	FILE* f=fopen("/etc/mtab","r");
+	if ( f == NULL ) {
+		if (chdir("/etc")) {
+			chdir("/");
+			unlink("/etc"); //Success only if it's a symlink(file)
+			dirUnlinkHierarchy("/etc"); //Then it should be an empty dir
+			mkdir("/etc",0777);
+		}
+		f=fopen("/etc/mtab","w");
+		if ( f != NULL ) fclose(f);
+	}
+}
+
 static void check_fs() {
 	LOGI("Checking FS types\n");
 	int i;
@@ -97,12 +113,17 @@ static void check_fs() {
        for (i = 1 ;i < 4 ;i++){
           info = &g_roots[i];
           if ( internal_root_mounted(info) < 0 ) {
-			  if(!chdir(info->mount_point)){
+			  if(chdir(info->mount_point)){
 				mkdir(info->mount_point, 0755);  // in case it doesn't already exist
 			  } else chdir("/");
 			  if ( !strncmp(info->device,"/sdcard/",8) ) {
+				  char check_cmd[PATH_MAX];
+				  create_mtab();
+				  sprintf(check_cmd,"/xbin/e2fsck -fyc %s",info->device);
+				  __system(check_cmd);
+				  ensure_root_path_unmounted(info->name); //Just in case e2fsck mounted it
 				  strcpy(info->filesystem,"ext4");
-				  const char* options = "nodev,nosuid,noatime,nodiratime,data=ordered";
+				  const char* options = "loop,nodev,nosuid,noatime,nodiratime,data=ordered";
 				  info->filesystem_options=malloc(strlen(options)+1);
 				  strcpy(info->filesystem_options,options);
 			  } else {
@@ -113,28 +134,40 @@ static void check_fs() {
 					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
 				  }
-				  else if ( !mount(info->device, info->mount_point, "ext2", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
+				  else {
+					  char check_cmd[PATH_MAX];
+					  create_mtab();
+					  sprintf(check_cmd,"/xbin/e2fsck -fyc %s",info->device);
+					  __system(check_cmd);
+					  ensure_root_path_unmounted(info->name); //Just in case e2fsck mounted it
+					  if ( !mount(info->device, info->mount_point, "ext2", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
 					  strcpy(info->filesystem,"ext2");
 					  const char* options = "nodev,nosuid,noatime,nodiratime";
 					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
-				  }
-				  else if ( !mount(info->device, info->mount_point, "ext4", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
-					  strcpy(info->filesystem,"ext4");
-					  const char* options = "nodev,nosuid,noatime,nodiratime,data=ordered";
-					  info->filesystem_options=malloc(strlen(options)+1);
-					  strcpy(info->filesystem_options,options);
-				  }
-				  else {
-					  strcpy(info->filesystem,"auto");
-					  if (info->filesystem_options != NULL) {
-						  free(info->filesystem_options);
-						  info->filesystem_options=NULL;
+					  }
+					  else if ( !mount(info->device, info->mount_point, "ext4", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
+						  strcpy(info->filesystem,"ext4");
+						  const char* options = "nodev,nosuid,noatime,nodiratime,data=ordered";
+						  info->filesystem_options=malloc(strlen(options)+1);
+						  strcpy(info->filesystem_options,options);
+					  }
+					  else {
+						  strcpy(info->filesystem,"auto");
+						  if (info->filesystem_options != NULL) {
+							  info->filesystem_options=NULL;
+						  }
 					  }
 				  }
 			  }
 		  }
+		  ui_print("."); //A little progress
        }
+       ui_print("\n");
+
+       //We don't need them already mounted
+       ensure_root_path_unmounted("SYSTEM:");
+       ensure_root_path_unmounted("DATA:");
  }
 
 const RootInfo *
@@ -439,14 +472,7 @@ format_root_device(const char *root)
 		     if (info->filesystem != NULL && strncmp(info->filesystem, "ext",3) == 0) {
 	                char fst[10];
 	                sprintf(fst,"-T %s",info->filesystem);
-	                //We should create /etc/mtab
-						__system("rm /etc"); //Success only if it's a symlink
-						struct stat st;
-						if(stat("/etc",&st)) {
-							mkdir("/etc",0777);
-						}
-						FILE* f=fopen("/etc/mtab","w");
-						if ( f != NULL ) fclose(f);
+	                create_mtab();
 		         LOGW("format: %s as %s\n", info->device, fst);
 	                if (strncmp(info->filesystem, "ext4",4) == 0) {					
 						///xbin/mke2fs -T ext4 -F -q -m 0 -b 4096 -O ^huge_file,extent /sdcard/cm6/data.img

@@ -25,7 +25,7 @@ char* MENU_HEADERS[] = { NULL };
 char* MENU_ITEMS[] = { "Leave Recovery",
                        "Apply sdcard/update.zip",
                        "Install zip from sdcard",
-                       "Wipe menu",
+                       "Wipe ...",
                        "Backup and Restore",
                        "Mounts and Storage",
                        "Advanced",

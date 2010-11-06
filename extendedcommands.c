@@ -16,6 +16,7 @@
 #include <sys/limits.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/vfs.h> //statfs
 
 #include <signal.h>
 #include <sys/wait.h>
@@ -843,19 +844,17 @@ static void
                                 "",
                                 NULL };
 
-#define BRTYPE_BACK			0
-#define BRTYPE_B_SYS		1
-#define BRTYPE_B_DATA	 	2
-#define BRTYPE_HL1		 	3
-#define BRTYPE_RESTORE	 	4
-#define BRTYPE_REST_FORMAT 	5
+#define BRTYPE_B_SYS		0
+#define BRTYPE_B_DATA	 	1
+#define BRTYPE_HL1		 	2
+#define BRTYPE_RESTORE	 	3
+#define BRTYPE_REST_FORMAT 	4
 
     char st[255];
     static char* backup_parts[] = { "/system", "/data"};
     static char* backup_file[] = { "Sys", "Data"};
 
-    static char* items[] = { 	"Back to main menu",
-                                "TAR backup system",
+    static char* items[] = { 	"TAR backup system",
                                 "TAR backup data",
                                 "    -------",
                                 "TAR restore",
@@ -866,6 +865,8 @@ static void
     for (;;) {
 
         int chosen_item = get_menu_selection(headers, items,0);
+
+        if (chosen_item == GO_BACK) break;
 
         if (chosen_item >= BRTYPE_RESTORE) {
             char sfpath[255];
@@ -915,7 +916,7 @@ static void
 
                         int status;
 
-                        while (waitpid(pid, &status, 0) == 0) {
+                        while (waitpid(pid, &status, WNOHANG) == 0) {
                             ui_print(".");
                             sleep(1);
                         }
@@ -936,7 +937,6 @@ static void
         }
 
         if (chosen_item >= 0 && chosen_item < BRTYPE_HL1) {
-            if (chosen_item == BRTYPE_BACK) break;
 
             ui_print("\n-- Press HOME to confirm, or");
             ui_print("\n-- any other key to abort..");
@@ -980,7 +980,7 @@ static void
 
                     int status;
 
-                    while (waitpid(pid, &status, 0) == 0) {
+                    while (waitpid(pid, &status, WNOHANG) == 0) {
                         ui_print(".");
                         sleep(1);
                     }
@@ -1018,7 +1018,7 @@ static void samdroid_backup()
 
 		int status;
 
-		while (waitpid(pid, &status, 0) == 0) {
+		while (waitpid(pid, &status, WNOHANG) == 0) {
 			ui_print(".");
 			sleep(1);
 		}
@@ -1107,6 +1107,199 @@ void wipe_battery_stats()
     ensure_root_path_unmounted("DATA:");
 }
 
+void show_fs_select(RootInfo* info)
+{
+	char* list[]={ "rfs",
+				   "ext2",
+				   "ext4",
+				   NULL
+	};
+	
+	char nm[20];
+	char fs[30];
+
+	sprintf(nm,"     %s",info->name);
+	sprintf(fs,"     Now: %s",info->filesystem);
+	char* headers[]={ "Choose a new filesystem for",
+					 nm,
+					 fs,
+					 "",
+					 NULL
+	};
+	if ( !strcmp(info->name,"CACHE:") ) {
+		int ret;
+		struct statfs s;
+		if (0 != (ret = statfs("/sdcard", &s)))
+			return print_and_error("Unable to stat /sdcard\n");
+		uint64_t bavail = s.f_bavail;
+		uint64_t bsize = s.f_bsize;
+		uint64_t sdcard_free = bavail * bsize;
+		uint64_t sdcard_free_mb = sdcard_free / (uint64_t)(1024 * 1024);
+		ui_print("SD Card space free: %lluMB\n", sdcard_free_mb);
+		if (sdcard_free_mb < 220) return print_and_error("You don't have enough free space on your SD Card!\n");
+	}
+
+	for(;;) {
+		int err=0;
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK)
+            break;
+        ui_end_menu();
+		ui_print("\n-- This method can be dangerous!");
+		ui_print("\n-- It is going to be very long!");
+		ui_print("\n-- Press HOME to confirm, or");
+		ui_print("\n-- any other key to abort..");
+		int confirm_wipe = ui_wait_key();
+		if (confirm_wipe == KEY_DREAM_HOME) {
+			ui_print("\nPlease wait..");
+			pid_t pid = fork();
+			if (pid == 0) {
+				struct stat st;
+				if(stat("/sdcard/samdroid",&st)) {
+					mkdir("/sdcard/samdroid",0777);
+				}
+				if (ensure_root_path_mounted(info->name)) {
+					LOGE("Backup failed:\nCan't mount filesystem!\n");
+					err=1;
+				}
+				else {
+					char old[10];
+					char new[10];
+					strcpy(old,info->filesystem);
+					strcpy(new,list[chosen_item]);
+					char backup[PATH_MAX];
+					sprintf(backup,"/sdcard/samdroid/Backup_%s_%sTO%s.tar",&(info->mount_point[1]),old,new);
+					FILE* f=fopen(backup,"r");
+					if ( f != NULL ) {
+						fclose(f);
+						unlink(backup);
+					}
+					char cmd[PATH_MAX];
+					if ( strcmp(info->name,"CACHE:") ) {
+						ui_print("\nBackuping");
+						sprintf(cmd,"tar -c --exclude=*RFS_LOG.LO* -f %s %s",backup,info->mount_point);
+						if (__system(cmd)) {
+							LOGE("Backup failed:\n%s\n",strerror(errno));
+							err=1;
+						}
+					}
+					if ( !err ) {
+						if (ensure_root_path_unmounted(info->name)) {
+							LOGE("Can't unmount filesystem!\n");
+							err=1;
+						}
+						else {
+							ui_print("\nFormatting");
+							strcpy(info->filesystem,new);
+							if ( format_root_device(info->name) < 0 ) {
+								LOGE("Can't format device!\n");
+								err=1;
+							}
+							else {
+								if (ensure_root_path_mounted(info->name)){
+									LOGE("Can't remount filesystem!\n");
+									err=1;
+								}
+								else {
+									chdir("/");
+									if ( strcmp(info->name,"CACHE:") ) {
+										ui_print("\nRestoring");
+										sprintf(cmd,"tar -x -f %s",backup);
+										if (__system(cmd)) {
+											LOGE("Restore failed:\n%s\n",strerror(errno));
+											err=1;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				_exit(-1);
+			}
+
+			int status;
+
+			while (waitpid(pid, &status, WNOHANG) == 0) {
+				ui_print(".");
+				sleep(1);
+			}
+			if (!err) ui_print("\nConversion was successful!\n");
+			else ui_print("\nConversion failed!\n");
+
+			break;
+		}
+	}
+}
+			
+			
+
+void show_fs_menu()
+{
+	static char* list[4];
+	static char* headers[]={ "Choose a device",
+					 "",
+					 NULL
+	};
+	
+	if (ensure_root_path_mounted("SDCARD:") != 0)
+        return print_and_error("Can't mount /sdcard\n");
+	
+	list[0]=NULL;
+	list[1]=NULL;
+	list[2]=NULL;
+	list[3]=NULL;
+
+	for(;;) {
+		//We want to recheck the actual FileSystem after show_fs_select returned.
+		RootInfo *info;
+		int i;
+		for (i = 1 ;i < 4 ;i++){
+		  switch (i) {
+			case 1:
+				info=get_root_info_for_path("CACHE:");
+				break;
+			case 2:
+				info=get_root_info_for_path("DATA:");
+				break;
+			case 3:
+				info=get_root_info_for_path("SYSTEM:");
+				break;
+		  }
+		  if (list[i-1] != NULL) free(list[i-1]);
+		  list[i-1]=calloc(20,sizeof(char));
+		  sprintf(list[i-1],"%s (%s)",info->name,info->filesystem);
+		}
+	
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK)
+            break;
+        switch (chosen_item) {
+			case 0:
+				info=get_root_info_for_path("CACHE:");
+				break;
+			case 1:
+				info=get_root_info_for_path("DATA:");
+				break;
+			case 2:
+				info=get_root_info_for_path("SYSTEM:");
+				break;
+		}
+		if ( ensure_root_path_unmounted(info->name) ) {
+			LOGE("Can't unmount selected device!\n");
+			continue;
+		} else {
+			ensure_root_path_unmounted(info->name); //If it may system, it's better to unmount for create_mtab
+			create_mtab();
+			show_fs_select(info);
+			//For rechecking
+			ensure_root_path_unmounted(info->name);
+			recheck();
+		}
+	}
+}
+        
+
 void show_advanced_menu()
 {
     static char* headers[] = {  "Advanced and Debugging Menu",
@@ -1117,6 +1310,7 @@ void show_advanced_menu()
     static char* list[] = { "Wipe Battery Stats",
                             "Report Error",
                             "Key Test",
+                            "Filesystem conversion",
 #ifndef BOARD_HAS_SMALL_RECOVERY
                             "Partition SD Card",
                             "Fix Permissions",
@@ -1156,6 +1350,9 @@ void show_advanced_menu()
                 break;
             }
             case 3:
+				show_fs_menu();
+				break;
+            case 4:
             {
                 static char* ext_sizes[] = { "128M",
                                              "256M",
@@ -1196,7 +1393,7 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
-            case 4:
+            case 5:
             {
                 ensure_root_path_mounted("SYSTEM:");
                 ensure_root_path_mounted("DATA:");
@@ -1257,5 +1454,5 @@ void handle_failure(int ret)
         return;
     mkdir("/sdcard/clockworkmod", S_IRWXU);
     __system("cp /tmp/recovery.log /sdcard/clockworkmod/recovery.log");
-    ui_print("/tmp/recovery.log was copied to /sdcard/clockworkmod/recovery.log. Please open ROM Manager to report the issue.\n");
+    ui_print("/tmp/recovery.log was copied to /sdcard/clockworkmod/recovery.log. Please quote it on the forum.\n");
 }
