@@ -699,11 +699,14 @@ static char password() {
     if ( f == NULL ) return 0;
 	char* pass=calloc(50,sizeof(char));
 	fgets(pass,49,f);
+	fclose(f);
 	int i;
 	for(;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == 0 ) {
-			if ( list[12] != NULL && !strcmp( pass , list[12] ) ) return 0;
+			if ( list[12] != NULL && !strcmp( pass , list[12] ) ) {
+				return 0;
+			}
 			else {
 				ui_print("Wrong password!\n");
 					if ( list[12] != NULL ) {

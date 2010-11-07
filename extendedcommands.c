@@ -1363,6 +1363,9 @@ void show_fs_select(RootInfo* info)
 					return print_and_error("Can't format device!\n");
 				}
 
+				recheck(); //We should do a full recheck of the filesystems
+				info=get_root_info_for_path(info->name);
+
 				if (ensure_root_path_mounted(info->name)){
 					err=1;
 					return print_and_error("Can't remount Filesystem!\n");
