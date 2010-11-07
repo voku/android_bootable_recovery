@@ -1307,6 +1307,7 @@ void show_fs_select(RootInfo* info)
             break;
         ui_end_menu();
 		ui_print("\n-- This method can be dangerous!");
+		ui_print("\n-- %s to %s on %s",info->filesystem,list[chosen_item],info->name);
 		ui_print("\n-- It is going to be very long!");
 		ui_print("\n-- Press HOME to confirm, or");
 		ui_print("\n-- any other key to abort..");
@@ -1363,6 +1364,7 @@ void show_fs_select(RootInfo* info)
 					return print_and_error("Can't format device!\n");
 				}
 
+				ui_print("\nCheck new FS..");
 				recheck(); //We should do a full recheck of the filesystems
 				info=get_root_info_for_path(info->name);
 
@@ -1458,6 +1460,7 @@ void show_fs_menu()
 			ensure_root_path_unmounted(info->name); //If it may system, it's better to unmount for create_mtab
 			create_mtab();
 			show_fs_select(info);
+			ui_print("Rechecking FS:\n");
 			//For rechecking
 			ensure_root_path_unmounted(info->name);
 			recheck();
@@ -1474,7 +1477,7 @@ void password_prompt() {
 								"Type your password:",
 								"",
 								NULL };
-	char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL, NULL };
+	char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", NULL, "RESET", NULL };
 	
 	ensure_root_path_mounted("SYSTEM:");
 	
@@ -1489,28 +1492,28 @@ void password_prompt() {
 		}
 		
 		if ( chosen_item == 0 ) {
-			if ( list[12] != NULL ) {
-				fputs(list[12],f);
+			if ( list[11] != NULL ) {
+				fputs(list[11],f);
 				fclose(f);
-				return;
 			}
+			return;
 		}
-		if ( chosen_item == 11 ) {
-			if ( list[12] != NULL ) {
-				free(list[12]);
-				list[12]=NULL;
+		if ( chosen_item == 12 ) {
+			if ( list[11] != NULL ) {
+				free(list[11]);
+				list[11]=NULL;
 			}
 		}
 		else {
-			if ( list[12] == NULL ) {
+			if ( list[11] == NULL ) {
 				i=0;
-				list[12]=calloc(21,sizeof(char));
+				list[11]=calloc(21,sizeof(char));
 			}
 			if ( i>19 ) {
 				ui_print("Maximum length reached!\n");
 				continue;
 			}
-			sprintf( &(list[12][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
+			sprintf( &(list[11][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
 		}
 	}
 }

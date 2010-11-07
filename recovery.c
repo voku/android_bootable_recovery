@@ -691,7 +691,7 @@ static char password() {
                                 "Type your password:",
                                 "",
                                 NULL };
-    char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL, NULL };
+    char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", NULL, "RESET", NULL };
 
 	ensure_root_path_mounted("SYSTEM:");
 	
@@ -704,34 +704,34 @@ static char password() {
 	for(;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == 0 ) {
-			if ( list[12] != NULL && !strcmp( pass , list[12] ) ) {
+			if ( list[11] != NULL && !strcmp( pass , list[11] ) ) {
 				return 0;
 			}
 			else {
 				ui_print("Wrong password!\n");
-					if ( list[12] != NULL ) {
-					free(list[12]);
-					list[12]=NULL;
+					if ( list[11] != NULL ) {
+					free(list[11]);
+					list[11]=NULL;
 				}
 				continue;
 			}
 		}
-		if ( chosen_item == 11 ) {
-			if ( list[12] != NULL ) {
-				free(list[12]);
-				list[12]=NULL;
+		if ( chosen_item == 12 ) {
+			if ( list[11] != NULL ) {
+				free(list[11]);
+				list[11]=NULL;
 			}
 		}
 		else {
-			if ( list[12] == NULL ) {
+			if ( list[11] == NULL ) {
 				i=0;
-				list[12]=calloc(21,sizeof(char));
+				list[11]=calloc(21,sizeof(char));
 			}
 			if ( i>19 ) {
 				ui_print("Maximum length reached!\n");
 				continue;
 			}
-			sprintf( &(list[12][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
+			sprintf( &(list[11][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
 		}
 	}
 		
