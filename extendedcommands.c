@@ -1122,6 +1122,188 @@ void convert_zip(char* path_)
 
 }
 
+char** get_keys(char** prev,char start, char stop) {
+	int length=stop-start+2;
+	int first;
+	for (first=0; prev!=NULL && prev[first]!=NULL; ++first);
+	char** list=malloc((length+first)*sizeof(char*));
+	int i;
+	for (i=0;i<first;++i) {
+		list[i]=malloc((strlen(prev[i])+1)*sizeof(char));
+		strcpy(list[i],prev[i]);
+	}
+	free(prev);
+	for (i=start;i<=stop; ++i) {
+		list[i-start+first]=calloc(2,sizeof(char));
+		list[i-start+first][0]=i;
+	}
+	list[length+first-1]=NULL;
+	return list;
+}
+
+char write_key_to_header(char** headers, char key) {
+	int i;
+	for (i=0; headers[i]!=NULL; ++i);
+	if ( i>=PATH_MAX-1 ) {
+		ui_print("Maximum length reached\n");
+		return 0;
+	}
+	i-=1;
+	sprintf(headers[i],"%s%c",headers[i],key);
+	return key;
+}
+
+char numeric_keyboard(char** headers) {
+	char** list=get_keys(NULL,'0','9');
+	for (;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) return 0;
+		return write_key_to_header(headers,'0'+chosen_item);
+	}
+}
+
+char alpha_big_keyboard(char** headers) {
+	char** list=get_keys(NULL,'A','Z');
+	for (;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) return 0;
+		return write_key_to_header(headers,'A'+chosen_item);
+	}
+}
+
+char alpha_little_keyboard(char** headers) {
+	char** list=get_keys(NULL,'a','z');
+	for (;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) return 0;
+		return write_key_to_header(headers,'a'+chosen_item);
+	}
+}
+
+char other_keyboard(char** headers) {
+	char** list=get_keys(NULL,' ','/');
+	int first;
+	for (first=0; list[first]!=NULL; ++first);
+	list=get_keys(list,':','@');
+	int second;
+	for (second=first; list[second]!=NULL; ++second);
+	list=get_keys(list,'[',96);
+	int third;
+	for (third=second; list[third]!=NULL; ++third);
+	list=get_keys(list,'{',127);
+	
+	for (;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) return 0;
+		if ( chosen_item < first )
+			return write_key_to_header(headers,' '+chosen_item);
+		if ( chosen_item < second )
+			return write_key_to_header(headers,':'+chosen_item-first);
+		if ( chosen_item < third )
+			return write_key_to_header(headers,'['+chosen_item-second);
+		return write_key_to_header(headers,'{'+chosen_item-third);
+	}
+}
+
+char keyboard(char** headers) {
+	static char* list[] = {  "Numeric keys",
+							 "ALPHABETIC keys",
+							 "alphabetic keys",
+							 "Others",
+							 "Del",
+							 "RESET",
+							 NULL
+	};
+	for (;;) {
+		int i;
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) return 0;
+		switch (chosen_item) {
+			case 0:
+				while ( numeric_keyboard(headers) ) {}
+				break;
+			case 1:
+				while ( alpha_big_keyboard(headers) ) {}
+				break;
+			case 2:
+				while ( alpha_little_keyboard(headers) ) {}
+				break;
+			case 3:
+				while ( other_keyboard(headers) ) {}
+				break;
+			case 4:
+				for (i=0; headers[i]!=NULL; ++i);
+				i-=1;
+				headers[i][strlen(headers[i])-1]='\0';
+				break;
+			case 5:
+				for (i=0; headers[i]!=NULL; ++i);
+				i-=1;
+				free(headers[i]);
+				headers[i]=calloc(PATH_MAX,sizeof(char));
+				break;
+			default:
+				return 0;
+				
+		}
+	}
+}
+
+void show_terminal() {
+	char* headers[]={ "Terminal",
+					 "",
+					 NULL,
+					 NULL
+	};
+	char* list[]={ "Keyboard",
+				   "Run",
+				   NULL
+	};
+	headers[2]=calloc(PATH_MAX,sizeof(char));
+	for(;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) return 0;
+		switch (chosen_item) {
+			case 0:
+				while ( keyboard(headers) ) {}
+				break;
+			case 1:
+				ui_print("Executing command..");
+				freopen("/command_output", "w", stdout); setbuf(stdout, NULL);
+				freopen("/command_output", "a", stderr); setbuf(stderr, NULL);
+				pid_t pid=fork();
+				if ( pid == 0 ) {
+					if ( __system(headers[2]) ) {
+						fprintf(stderr,"%s",strerror(errno));
+						_exit(2);
+					}
+					_exit(-1);
+				}
+				int status;
+				while (waitpid(pid, &status, WNOHANG) == 0) {
+					ui_print(".");
+					sleep(1);
+				}
+				ui_print("\n");
+				freopen("/tmp/recovery.log", "a", stdout); setbuf(stdout, NULL);
+				freopen("/tmp/recovery.log", "a", stderr); setbuf(stderr, NULL);
+				FILE* f=fopen("/command_output","r");
+				if ( f != NULL ) {
+					char s[PATH_MAX];
+					while (!feof(f)) {
+						if ( fgets(s,PATH_MAX,f) != NULL )
+							ui_print("%s\n",s);
+					}
+					fclose(f);
+				}
+
+				break;
+		}
+	}
+	
+}
+		
+
 void convert_menu()
 {
 	return print_and_error("Under development!\n");
@@ -1740,6 +1922,7 @@ void show_passwd_menu()
 		}
 	}
 }
+
         
 
 void show_advanced_menu()
@@ -1754,6 +1937,7 @@ void show_advanced_menu()
                             "Install package as new OS",
                             "Filesystem conversion",
                             "Recovery Password",
+                            "Terminal",
 #ifndef BOARD_HAS_SMALL_RECOVERY
                             "Partition SD Card",
                             "Fix Permissions",
@@ -1788,7 +1972,10 @@ void show_advanced_menu()
 			case 4:
 				show_passwd_menu();
 				break;
-            case 5:
+			case 5:
+				show_terminal();
+				break;
+            case 6:
             {
                 static char* ext_sizes[] = { "128M",
                                              "256M",
@@ -1829,7 +2016,7 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
-            case 6:
+            case 7:
             {
                 ensure_root_path_mounted("SYSTEM:");
                 ensure_root_path_mounted("DATA:");
