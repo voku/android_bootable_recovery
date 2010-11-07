@@ -126,6 +126,8 @@ const MtdPartition *get_root_mtd_partition(const char *root_path);
  */
 int format_root_device(const char *root);
 
+int create_mknods(int n);
+
 void recheck();
 
 void create_mtab();

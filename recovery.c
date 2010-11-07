@@ -543,31 +543,7 @@ static void init_os (char** items,int boot) {
     items[boot]=calloc(70,sizeof(char));
     strcpy(items[boot],"Boot ");
     strcat(items[boot],os);
-    
-				char *args[] = {"/xbin/mknod", "/dev/loop0", "b", "7", "0", NULL};          
-				pid_t pid = fork();
-				if (pid == 0) {
-					execv("/xbin/mknod", args);
-					fprintf(stderr, "E:Can't make loop0\n(%s)\n", strerror(errno));
-					_exit(-1);
-					}
-				int status;
-
-				while (waitpid(pid, &status, WNOHANG) == 0) {
-					sleep(1);
-				}
-				
-				char *args2[] = {"/xbin/mknod", "/dev/loop1", "b", "7", "1", NULL};          
-				pid = fork();
-				if (pid == 0) {
-					execv("/xbin/mknod", args2);
-					fprintf(stderr, "E:Can't make loop1\n(%s)\n", strerror(errno));
-					_exit(-1);
-					}
-
-				while (waitpid(pid, &status, WNOHANG) == 0) {
-					sleep(1);
-				}
+    create_mknods(2);
 }
 
 void start_os() {
@@ -706,6 +682,58 @@ void show_wipe_menu() { //by LeshaK
     }
 }
 
+static char password() {
+	static char* headers[] = { 	"   Password prompt by Xmister",
+                                "   -- Samsung Spica i5700 --",
+                                "",
+                                "Use Up/Down and OK to select",
+                                "",
+                                "Type your password:",
+                                "",
+                                NULL };
+    char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL, NULL };
+
+	ensure_root_path_mounted("SYSTEM:");
+	
+    FILE* f=fopen("/system/.recovery_password","r");
+    if ( f == NULL ) return 0;
+	char* pass=calloc(50,sizeof(char));
+	fgets(pass,49,f);
+	int i;
+	for(;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == 0 ) {
+			if ( list[12] != NULL && !strcmp( pass , list[12] ) ) return 0;
+			else {
+				ui_print("Wrong password!\n");
+					if ( list[12] != NULL ) {
+					free(list[12]);
+					list[12]=NULL;
+				}
+				continue;
+			}
+		}
+		if ( chosen_item == 11 ) {
+			if ( list[12] != NULL ) {
+				free(list[12]);
+				list[12]=NULL;
+			}
+		}
+		else {
+			if ( list[12] == NULL ) {
+				i=0;
+				list[12]=calloc(21,sizeof(char));
+			}
+			if ( i>19 ) {
+				ui_print("Maximum length reached!\n");
+				continue;
+			}
+			sprintf( &(list[12][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
+		}
+	}
+		
+}
+
 static void
 prompt_and_wait() {
     char** headers = prepend_title(MENU_HEADERS);
@@ -717,6 +745,8 @@ prompt_and_wait() {
 	init_os(items,ITEM_CHOOSE_OS);  //Set the pointers to the actual device/image
 
 	recheck();  //We should recheck the Filesystems.
+
+	password();
 	
 	if ( multi ) items[ITEM_BACK] = "Choose another OS";
 	else items[ITEM_BACK] = "Recheck Filesystems";
@@ -893,7 +923,7 @@ static char
 			}
 			ui_print("."); //12
 			//rest a bit, to let FS's to be detected and unmounted properly
-			//sleep(3);
+			sleep(3);
 			ui_print("."); //13
 			int err=0;
 			if (ensure_root_path_unmounted("SYSTEM:")) {
@@ -919,7 +949,7 @@ static char
 			if ( pid == 0 )	{
 				f = fopen("/sdcard/.bootlst","w");
 				if ( f != NULL ) {
-					for (i=0; list[i] != NULL; i++ ) {
+					for (i=1; list[i] != NULL; i++ ) {
 						fputs(&(list[i][6]),f);
 						fputc('\n',f);
 					}
@@ -1090,7 +1120,7 @@ main(int argc, char **argv) {
         }
     }
 
-	int ret;
+	int ret=1; //We want recovery by default
     if (status != INSTALL_SUCCESS && !is_user_initiated_recovery) ui_set_background(BACKGROUND_ICON_ERROR);
     if (status != INSTALL_SUCCESS || ui_text_visible()) ret=pre_menu();
 

@@ -31,8 +31,8 @@
 #include "roots.h"
 #include "recovery_ui.h"
 
-#include "commands.h"
 #include "amend/amend.h"
+#include "commands.h"
 
 #include "mtdutils/mtdutils.h"
 #include "mtdutils/dump_image.h"
@@ -300,6 +300,7 @@ char* choose_file_menu(const char* directory, const char* fileExtensionOrDirecto
     free_string_array(dirs);
     return return_value;
 }
+
 
 void show_choose_zip_menu()
 {
@@ -1002,6 +1003,165 @@ static void
     }
 }
 
+void convert_zip(char* path_)
+{
+	//Check if it's a zip file
+	ZipArchive zip;
+	char pathbuf[PATH_MAX];
+    const char *path;
+    path = translate_root_path(path_,
+            pathbuf, sizeof(pathbuf));
+    if (path == NULL) {
+        LOGE("Bad path: \"%s\"\n", path_);
+        return;
+    }
+    int err = mzOpenZipArchive(path, &zip);
+    if (err != 0) {
+        LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
+        return;
+    }
+    mzCloseZipArchive(&zip);
+		char* point;
+		char file[100];
+		strcpy(file,basename(path));
+		char* sd=calloc(2+strlen("/sdcard/")+1,sizeof(char));
+		strcpy(sd,"/sdcard/");
+		char name[PATH_MAX];
+		strncpy(name,file,2);
+		strcpy(&(sd[8]),name);
+		strcat(sd,"\0");
+		if (chdir(sd) && mkdir(sd,0777)) return print_and_error("Can't create directory!\n");
+		if (create_mknods(2))  return print_and_error("Can't create mknods!\n");
+		char* system_img=calloc(strlen(sd)+strlen("/system.img")+1,sizeof(char));
+		sprintf(system_img,"%s/%s",sd,"system.img");
+		char* data_img=calloc(strlen(sd)+strlen("/data.img")+1,sizeof(char));
+		sprintf(data_img,"%s/%s",sd,"data.img");
+		char img_cmd[PATH_MAX];
+		sprintf(img_cmd,"dd if=/dev/zero of=%s bs=1M count=180",system_img);
+		ui_end_menu();
+		ui_print("Making System image..");
+		pid_t pid=fork();
+		if (pid == 0) {
+			if (__system(img_cmd))
+				fprintf(stderr,"Can't make system image for %s:\n%s",file,strerror(errno));
+			_exit(-1);
+		}
+		int status;
+		while (waitpid(pid, &status, WNOHANG) == 0) {
+			ui_print(".");
+			sleep(1);
+		}
+		ui_print("\n");
+		
+		RootInfo* info=get_root_info_for_path("SYSTEM:");
+		info->device=system_img;
+		info->filesystem="ext4";
+		const char options[] = "loop,nodev,nosuid,noatime,nodiratime,data=ordered";
+		info->filesystem_options=malloc(strlen(options)+1);
+		strcpy(info->filesystem_options,options);
+		ui_print("Formatting System image..");
+		if ( format_root_device("SYSTEM:") ) return print_and_error("Can't format SYSTEM:");
+		FILE* f =fopen(data_img,"r");
+		if ( f == NULL ) {
+			sprintf(img_cmd,"dd if=/dev/zero of=%s bs=1M count=180",data_img);
+			ui_print("Making Data image..");
+			pid=fork();
+			if (pid == 0) {
+				if (__system(img_cmd))
+					fprintf(stderr,"Can't make data image for %s:\n%s",file,strerror(errno));
+				_exit(-1);
+			}
+			while (waitpid(pid, &status, WNOHANG) == 0) {
+				ui_print(".");
+				sleep(1);
+			}
+			ui_print("\n");
+
+			info=get_root_info_for_path("DATA:");
+			info->device=data_img;
+			info->filesystem="ext4";
+			info->filesystem_options=malloc(strlen(options)+1);
+			strcpy(info->filesystem_options,options);
+
+			ui_print("\nFormatting Data image..");
+			if ( format_root_device("DATA:") ) return print_and_error("Can't format DATA:");
+		}
+
+		ui_print("\nSetting up system..");
+
+		char cmd_unzip[PATH_MAX];
+		sprintf(cmd_unzip,"unzip -o %s system/* -d /",path);
+		ensure_root_path_mounted("SYSTEM:");
+
+		pid=fork();
+		if (pid == 0) {
+			if (__system(cmd_unzip))
+				fprintf(stderr,"Can't unzip %s:\n%s",file,strerror(errno));
+			_exit(-1);
+		}
+		while (waitpid(pid, &status, WNOHANG) == 0) {
+			ui_print(".");
+			sleep(1);
+		}
+		ui_print("\n");
+		
+		f=fopen("/sdcard/.bootlst","a");
+		if ( f != NULL ) {
+			fputs(name,f);
+			fputc('\n',f);
+			fclose(f);
+		} else return print_and_error("Can't open /sdcard/.bootlst\n");
+
+}
+
+void convert_menu()
+{
+	return print_and_error("Under development");
+	if (ensure_root_path_mounted("SDCARD:") != 0) {
+        LOGE ("Can't mount /sdcard\n");
+        return;
+    }
+
+    if (ensure_root_path_unmounted("SYSTEM:") != 0) {
+        LOGE ("Can't unmount /system\n");
+        return;
+    }
+
+    if (ensure_root_path_unmounted("DATA:") != 0) {
+        LOGE ("Can't unmount /data\n");
+        return;
+    }
+
+		int ret;
+		struct statfs s;
+		if (0 != (ret = statfs("/sdcard", &s)))
+			return print_and_error("Unable to stat /sdcard\n");
+		uint64_t bavail = s.f_bavail;
+		uint64_t bsize = s.f_bsize;
+		uint64_t sdcard_free = bavail * bsize;
+		uint64_t sdcard_free_mb = sdcard_free / (uint64_t)(1024 * 1024);
+		ui_print("SD Card space free: %lluMB\n", sdcard_free_mb);
+		if (sdcard_free_mb < 400) return print_and_error("You don't have enough free space on your SD Card!\n");
+
+
+    static char* headers[] = {  "Choose a zip to convert",
+                                "",
+                                NULL 
+    };
+    
+    char* file = choose_file_menu("/sdcard/", ".zip", headers);
+    if (file == NULL)
+        return;
+    char sdcard_package_file[1024];
+    strcpy(sdcard_package_file, "SDCARD:");
+    strcat(sdcard_package_file,  file + strlen("/sdcard/"));
+    static char* confirm_install  = "Confirm convert?";
+    static char confirm[PATH_MAX];
+    sprintf(confirm, "Yes - Convert %s", basename(file));
+    if (confirm_selection(confirm_install, confirm))
+        convert_zip(sdcard_package_file);
+}
+
 static void samdroid_backup()
 {
 	if (ensure_root_path_mounted("SDCARD:") != 0) {
@@ -1126,6 +1286,7 @@ void show_fs_select(RootInfo* info)
 					 "",
 					 NULL
 	};
+	
 	if ( !strcmp(info->name,"CACHE:") ) {
 		int ret;
 		struct statfs s;
@@ -1152,84 +1313,86 @@ void show_fs_select(RootInfo* info)
 		int confirm_wipe = ui_wait_key();
 		if (confirm_wipe == KEY_DREAM_HOME) {
 			ui_print("\nPlease wait..");
-			pid_t pid = fork();
-			if (pid == 0) {
 				struct stat st;
 				if(stat("/sdcard/samdroid",&st)) {
 					mkdir("/sdcard/samdroid",0777);
 				}
 				if (ensure_root_path_mounted(info->name)) {
-					LOGE("Backup failed:\nCan't mount filesystem!\n");
 					err=1;
+					return print_and_error("Backup failed:\nCan't mount filesystem!\n");
 				}
-				else {
-					char old[10];
-					char new[10];
-					strcpy(old,info->filesystem);
-					strcpy(new,list[chosen_item]);
-					char backup[PATH_MAX];
-					sprintf(backup,"/sdcard/samdroid/Backup_%s_%sTO%s.tar",&(info->mount_point[1]),old,new);
-					FILE* f=fopen(backup,"r");
-					if ( f != NULL ) {
-						fclose(f);
-						unlink(backup);
-					}
-					char cmd[PATH_MAX];
-					if ( strcmp(info->name,"CACHE:") ) {
-						ui_print("\nBackuping");
-						sprintf(cmd,"tar -c --exclude=*RFS_LOG.LO* -f %s %s",backup,info->mount_point);
+				char old[10];
+				char new[10];
+				strcpy(old,info->filesystem);
+				strcpy(new,list[chosen_item]);
+				char backup[PATH_MAX];
+				sprintf(backup,"/sdcard/samdroid/Backup_%s_%sTO%s.tar",&(info->mount_point[1]),old,new);
+				FILE* f=fopen(backup,"r");
+				if ( f != NULL ) {
+					fclose(f);
+					unlink(backup);
+				}
+				char cmd[PATH_MAX];
+				if ( strcmp(info->name,"CACHE:") ) {
+					ui_print("\nBackuping");
+					sprintf(cmd,"/xbin/tar -c --exclude=*RFS_LOG.LO* -f %s %s",backup,info->mount_point);
+					pid_t pid=fork();
+					if (pid==0) {
 						if (__system(cmd)) {
-							LOGE("Backup failed:\n%s\n",strerror(errno));
 							err=1;
 						}
+						_exit(-1);
 					}
-					if ( !err ) {
-						if (ensure_root_path_unmounted(info->name)) {
-							LOGE("Can't unmount filesystem!\n");
-							err=1;
-						}
-						else {
-							ui_print("\nFormatting");
-							strcpy(info->filesystem,new);
-							if ( format_root_device(info->name) < 0 ) {
-								LOGE("Can't format device!\n");
-								err=1;
-							}
-							else {
-								if (ensure_root_path_mounted(info->name)){
-									LOGE("Can't remount filesystem!\n");
-									err=1;
-								}
-								else {
-									chdir("/");
-									if ( strcmp(info->name,"CACHE:") ) {
-										ui_print("\nRestoring");
-										sprintf(cmd,"tar -x -f %s",backup);
-										if (__system(cmd)) {
-											LOGE("Restore failed:\n%s\n",strerror(errno));
-											err=1;
-										}
-									}
-								}
-							}
-						}
+					int status;
+
+					while (waitpid(pid, &status, WNOHANG) == 0) {
+						ui_print(".");
+						sleep(1);
 					}
+					if ( err ) return print_and_error("Backuping failed!\n");
+					
 				}
-				_exit(-1);
-			}
+				if (ensure_root_path_unmounted(info->name)) {
+					err=1;
+					return print_and_error("Can't unmount filesystem!\n");
+				}
+				ui_print("\nFormatting..");
+				strcpy(info->filesystem,new);
+				if ( format_root_device(info->name) < 0 ) {
+					err=1;
+					return print_and_error("Can't format device!\n");
+				}
 
-			int status;
+				if (ensure_root_path_mounted(info->name)){
+					err=1;
+					return print_and_error("Can't remount Filesystem!\n");
+				}
+				if ( strcmp(info->name,"CACHE:") ) {
+					chdir("/");
+					ui_print("\nRestoring");
+					sprintf(cmd,"/xbin/tar -x -f %s",backup);
+					pid_t pid = fork();
+					if (pid == 0) {
+						if (__system(cmd)) {
+							err=1;
+						}
+						_exit(-1);
+					}
 
-			while (waitpid(pid, &status, WNOHANG) == 0) {
-				ui_print(".");
-				sleep(1);
-			}
+					int status;
+					while (waitpid(pid, &status, WNOHANG) == 0) {
+						ui_print(".");
+						sleep(1);
+					}
+					if ( err ) return print_and_error("Restoring failed!\n");
+				}
 			if (!err) ui_print("\nConversion was successful!\n");
-			else ui_print("\nConversion failed!\n");
+			else ui_print("\nConversion failed!\n"); //This should no be reached any time
 
 			break;
 		}
 	}
+
 }
 			
 			
@@ -1298,6 +1461,86 @@ void show_fs_menu()
 		}
 	}
 }
+
+void password_prompt() {
+	char* headers[] = { 	"   Password prompt by Xmister",
+								"   -- Samsung Spica i5700 --",
+								"",
+								"Use Up/Down and OK to select",
+								"",
+								"Type your password:",
+								"",
+								NULL };
+	char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL, NULL };
+	
+	ensure_root_path_mounted("SYSTEM:");
+	
+	FILE* f=fopen("/system/.recovery_password","w");
+	if ( f == NULL ) return print_and_error("Can't open password file on system!\n");
+	int i;
+	for(;;) {
+		int chosen_item=get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) {
+			fclose(f);
+			return;
+		}
+		
+		if ( chosen_item == 0 ) {
+			if ( list[12] != NULL ) {
+				fputs(list[12],f);
+				fclose(f);
+				return;
+			}
+		}
+		if ( chosen_item == 11 ) {
+			if ( list[12] != NULL ) {
+				free(list[12]);
+				list[12]=NULL;
+			}
+		}
+		else {
+			if ( list[12] == NULL ) {
+				i=0;
+				list[12]=calloc(21,sizeof(char));
+			}
+			if ( i>19 ) {
+				ui_print("Maximum length reached!\n");
+				continue;
+			}
+			sprintf( &(list[12][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
+		}
+	}
+}
+
+void show_passwd_menu()
+{
+	char* list[]={   "Set new password",
+							"Clear password",
+							NULL
+						};
+	char* headers[]={ "Password menu",
+					 "",
+					 NULL
+	};
+	for (;;)
+    {
+        int chosen_item = get_menu_selection(headers, list, 0);
+        if (chosen_item == GO_BACK)
+            break;
+        switch (chosen_item)
+        {
+            case 0:
+				password_prompt();
+				break;
+			case 1:
+				if ( !unlink("/system/.recovery_password") ) {
+					ui_print("Password cleared!\n");
+					return;
+				} else print_and_error("Can't delete password file\n");
+				break;
+		}
+	}
+}
         
 
 void show_advanced_menu()
@@ -1309,8 +1552,9 @@ void show_advanced_menu()
 
     static char* list[] = { "Wipe Battery Stats",
                             "Report Error",
-                            "Key Test",
+                            "Install package as new OS",
                             "Filesystem conversion",
+                            "Recovery Password",
 #ifndef BOARD_HAS_SMALL_RECOVERY
                             "Partition SD Card",
                             "Fix Permissions",
@@ -1336,23 +1580,16 @@ void show_advanced_menu()
                 break;
             case 2:
             {
-                ui_print("Outputting key codes.\n");
-                ui_print("Go back to end debugging.\n");
-                int key;
-                int action;
-                do
-                {
-                    key = ui_wait_key();
-                    action = device_handle_key(key, 1);
-                    ui_print("Key: %d\n", key);
-                }
-                while (action != GO_BACK);
+                convert_menu();
                 break;
             }
             case 3:
 				show_fs_menu();
 				break;
-            case 4:
+			case 4:
+				show_passwd_menu();
+				break;
+            case 5:
             {
                 static char* ext_sizes[] = { "128M",
                                              "256M",
@@ -1393,7 +1630,7 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
-            case 5:
+            case 6:
             {
                 ensure_root_path_mounted("SYSTEM:");
                 ensure_root_path_mounted("DATA:");

@@ -23,6 +23,4 @@ typedef struct {
     ZipArchive *package;
 } RecoveryCommandContext;
 
-int register_update_commands(RecoveryCommandContext *ctx);
-
 #endif  // RECOVERY_COMMANDS_H_

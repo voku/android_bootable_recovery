@@ -106,6 +106,31 @@ void create_mtab() {
 	}
 }
 
+int create_mknods(int n) {
+	static mknods_ready=0;
+	if (!mknods_ready) {
+		char mknod_cmd[PATH_MAX];
+		int i;
+		int err=0;
+		for (i=0; i<n; ++i) {
+			sprintf(mknod_cmd,"/dev/loop%d",i);
+			FILE* f=fopen(mknod_cmd,"r");
+			if ( f != NULL ) {
+				fclose(f);
+				continue;
+			}
+			sprintf(mknod_cmd,"/xbin/mknod /dev/loop%d b 7 %d",i,i);
+			if ( __system(mknod_cmd) ) {
+				fprintf(stderr,"Can't create mknods:%s\n",strerror(errno));
+				err=1;
+			}
+		}
+		if (!err) mknods_ready=1;
+	}
+	if (mknods_ready) return 0;
+	else return 1;
+}
+
 static void check_fs() {
 	LOGI("Checking FS types\n");
 	int i;
@@ -123,14 +148,14 @@ static void check_fs() {
 				  __system(check_cmd);
 				  ensure_root_path_unmounted(info->name); //Just in case e2fsck mounted it
 				  strcpy(info->filesystem,"ext4");
-				  const char* options = "loop,nodev,nosuid,noatime,nodiratime,data=ordered";
+				  const char options[] = "loop,nodev,nosuid,noatime,nodiratime,data=ordered";
 				  info->filesystem_options=malloc(strlen(options)+1);
 				  strcpy(info->filesystem_options,options);
 			  } else {
 				  info->filesystem=calloc(5,sizeof(char));
-				  if ( !mount(info->device, info->mount_point, "rfs", MS_NODEV | MS_NOSUID, "codepage=utf8,xattr,check=no")) {
+				  if ( !mount(info->device, info->mount_point, "rfs", MS_NODEV | MS_NOSUID, "xattr,check=no")) {
 					  strcpy(info->filesystem,"rfs");
-					  const char* options = "nodev,nosuid,codepage=utf8,xattr,check=no";
+					  const char options[] = "nodev,nosuid,xattr,check=no";
 					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
 				  }
@@ -142,13 +167,13 @@ static void check_fs() {
 					  ensure_root_path_unmounted(info->name); //Just in case e2fsck mounted it
 					  if ( !mount(info->device, info->mount_point, "ext2", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
 					  strcpy(info->filesystem,"ext2");
-					  const char* options = "nodev,nosuid,noatime,nodiratime";
+					  const char options[] = "nodev,nosuid,noatime,nodiratime";
 					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
 					  }
 					  else if ( !mount(info->device, info->mount_point, "ext4", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
 						  strcpy(info->filesystem,"ext4");
-						  const char* options = "nodev,nosuid,noatime,nodiratime,data=ordered";
+						  const char options[] = "nodev,nosuid,noatime,nodiratime,data=ordered";
 						  info->filesystem_options=malloc(strlen(options)+1);
 						  strcpy(info->filesystem_options,options);
 					  }
