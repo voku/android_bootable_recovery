@@ -155,7 +155,7 @@ static void check_fs() {
 				  info->filesystem=calloc(5,sizeof(char));
 				  if ( !mount(info->device, info->mount_point, "rfs", MS_NODEV | MS_NOSUID, "xattr,check=no")) {
 					  strcpy(info->filesystem,"rfs");
-					  const char options[] = "nodev,nosuid,xattr,check=no";
+					  const char options[] = "nodev,nosuid,codepage=utf8,xattr,check=no";
 					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
 				  }
