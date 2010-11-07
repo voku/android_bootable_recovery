@@ -1120,7 +1120,7 @@ main(int argc, char **argv) {
         }
     }
 
-	int ret=1; //We want recovery by default
+	int ret=0; //We don't want recovery by default
     if (status != INSTALL_SUCCESS && !is_user_initiated_recovery) ui_set_background(BACKGROUND_ICON_ERROR);
     if (status != INSTALL_SUCCESS || ui_text_visible()) ret=pre_menu();
 

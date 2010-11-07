@@ -1292,7 +1292,7 @@ void show_terminal() {
 					char s[PATH_MAX];
 					while (!feof(f)) {
 						if ( fgets(s,PATH_MAX,f) != NULL )
-							ui_print("%s\n",s);
+							ui_print("%s",s);
 					}
 					fclose(f);
 				}
