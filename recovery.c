@@ -683,15 +683,16 @@ void show_wipe_menu() { //by LeshaK
 }
 
 static char password() {
-	static char* headers[] = { 	"   Password prompt by Xmister",
+	char* headers[] = { 	"   Password prompt by Xmister",
                                 "   -- Samsung Spica i5700 --",
                                 "",
                                 "Use Up/Down and OK to select",
                                 "",
                                 "Type your password:",
-                                "",
+                                NULL,
                                 NULL };
-    char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", NULL, "RESET", NULL };
+    headers[6]=calloc(21,sizeof(char));
+    char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL };
 
 	ensure_root_path_mounted("SYSTEM:");
 	
@@ -700,38 +701,34 @@ static char password() {
 	char* pass=calloc(50,sizeof(char));
 	fgets(pass,49,f);
 	fclose(f);
-	int i;
+	int i=0;
 	for(;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == 0 ) {
-			if ( list[11] != NULL && !strcmp( pass , list[11] ) ) {
+			if ( headers[6] != NULL && !strcmp( pass , headers[6] ) ) {
 				return 0;
 			}
 			else {
 				ui_print("Wrong password!\n");
-					if ( list[11] != NULL ) {
-					free(list[11]);
-					list[11]=NULL;
+				if ( headers[6] != NULL ) {
+					headers[6][0]='\0';
+					i=0;
 				}
 				continue;
 			}
 		}
-		if ( chosen_item == 12 ) {
-			if ( list[11] != NULL ) {
-				free(list[11]);
-				list[11]=NULL;
+		if ( chosen_item == 11 ) {
+			if ( headers[6] != NULL ) {
+				headers[6][0]='\0';
+				i=0;
 			}
 		}
 		else {
-			if ( list[11] == NULL ) {
-				i=0;
-				list[11]=calloc(21,sizeof(char));
-			}
 			if ( i>19 ) {
 				ui_print("Maximum length reached!\n");
 				continue;
 			}
-			sprintf( &(list[11][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
+			sprintf( &(headers[6][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
 		}
 	}
 		

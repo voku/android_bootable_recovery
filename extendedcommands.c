@@ -419,7 +419,7 @@ int confirm_selection(const char* title, const char* confirm)
     if (0 == stat("/sdcard/clockworkmod/.no_confirm", &info))
         return 1;
 
-    char* confirm_headers[]  = {  title, "  THIS CAN NOT BE UNDONE.", "", NULL };
+    /*char* confirm_headers[]  = {  title, "  THIS CAN NOT BE UNDONE.", "", NULL };
     char* items[] = { "No",
                       "No",
                       "No",
@@ -434,7 +434,15 @@ int confirm_selection(const char* title, const char* confirm)
                       NULL };
 
     int chosen_item = get_menu_selection(confirm_headers, items, 0);
-    return chosen_item == 7;
+    return chosen_item == 7;*/
+	ui_end_menu();
+	ui_print("\n-- %s",confirm);
+	ui_print("\n-- Press HOME to confirm, or");
+	ui_print("\n-- any other key to abort..\n");
+	int confirm_key = ui_wait_key();
+
+	return confirm_key == KEY_DREAM_HOME;
+    
 }
 
 int format_non_mtd_device(const char* root)
@@ -1116,7 +1124,7 @@ void convert_zip(char* path_)
 
 void convert_menu()
 {
-	return print_and_error("Under development");
+	return print_and_error("Under development!\n");
 	if (ensure_root_path_mounted("SDCARD:") != 0) {
         LOGE ("Can't mount /sdcard\n");
         return;
@@ -1192,6 +1200,183 @@ static void samdroid_backup()
 	}
 }
 
+void image_restore() {
+	static char* headers[] = {  "Image Restore",
+								"Note:",
+								"Restoring this type of backup",
+								"wears the most to you device!",
+                                "",
+                                NULL 
+    };
+
+
+    if (ensure_root_path_mounted("SDCARD:") != 0)
+        return print_and_error("Can't mount sdcard\n");
+
+    if ( chdir("/sdcard/samdroid/image") ) return print_and_error("Directory doesn't exist!\n");
+
+    char* file = choose_file_menu("/sdcard/samdroid/image/", ".img", headers);
+    if (file == NULL)
+        return;
+	char* start=strrchr(file,'_')+1;
+	char* end=strrchr(file,'.');
+	char* devname=calloc(10,sizeof(char));
+	strncpy(devname,start,end-start);
+	strcat(devname,":");
+	RootInfo* info=get_root_info_for_path(devname);
+	if ( info == NULL ) return print_and_error("Can't find device %s\n",devname);
+	if ( ensure_root_path_unmounted(info->name) ) return print_and_error("Can't unmount device!\n");
+	char msg[50];
+	sprintf(msg,"Restore %s",devname);
+	if ( confirm_selection(NULL,msg) ) {
+		ui_print("Restoring %s..",devname);
+		pid_t pid=fork();
+		if (pid == 0) {
+			char cmd[PATH_MAX];
+			sprintf(cmd,"/xbin/dd if=\"%s\" of=\"%s\"",file,info->device);
+			if ( __system(cmd) ) {
+				fprintf(stderr,"Can't Restore!\n%s\n",strerror(errno));
+					_exit(2);
+			}
+			_exit(-1);
+		}
+		int status;
+		while (waitpid(pid, &status, WNOHANG) == 0) {
+			ui_print(".");
+			sleep(1);
+		}
+		if ( WEXITSTATUS(status) == 2 )  return print_and_error("\nRestoring failed!\n");
+		else {
+			ui_print("\nRestore Finished!\n");
+			return;
+		}
+	}
+}
+	
+
+void image_backup() {
+	static char* headers[] = {  "Image Backup",
+                                "",
+                                NULL 
+    };
+
+    static char* list[] = { "DATA:", 
+                            "SYSTEM:",
+                            "SDEXT:",
+                            NULL
+    };
+
+    if (ensure_root_path_mounted("SDCARD:") != 0)
+        return print_and_error("Can't mount sdcard\n");
+
+    if ( chdir("/sdcard/samdroid/image") )
+		if ( __system("/xbin/mkdir -p /sdcard/samdroid/image") ) return print_and_error("Can't create directory!\n");
+
+
+	for(;;) {
+
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK ) return;
+		RootInfo* info=get_root_info_for_path(list[chosen_item]);
+		if ( info == NULL ) return print_and_error("Can't get FS info!\n");
+		char cnf[50];
+		sprintf(cnf,"Backup %s",info->name);
+		if ( confirm_selection(NULL,cnf) ) {
+
+			if ( ensure_root_path_mounted(info->name) ) return print_and_error("Can't mount FS!\n");
+
+			int ret;
+			struct statfs s;
+			char path[PATH_MAX];
+			translate_root_path(info->name, path, PATH_MAX);
+			if (0 != (ret = statfs(path, &s)))
+				return print_and_error("Unable to stat FS\n");
+
+			uint64_t bblocks = s.f_blocks;
+			uint64_t bsize = s.f_bsize;
+			uint64_t path_size = bblocks * bsize;
+			uint64_t path_size_mb = path_size / (uint64_t)(1024 * 1024);
+			ui_print("%s size: %lluMB\n", info->name, path_size_mb);
+			if ( ensure_root_path_unmounted(info->name) ) return print_and_error("Can't unmount FS!\n");
+
+			if (0 != (ret = statfs("/sdcard", &s)))
+				return print_and_error("Unable to stat /sdcard\n");
+			uint64_t bavail = s.f_bavail;
+			 bsize = s.f_bsize;
+			uint64_t sdcard_free = bavail * bsize;
+			uint64_t sdcard_free_mb = sdcard_free / (uint64_t)(1024 * 1024);
+			ui_print("SD Card space free: %lluMB\n", sdcard_free_mb);
+			if (sdcard_free_mb <= path_size_mb) return print_and_error("You don't have enough free space on your SD Card!\n");
+
+			// create file name
+			char st[PATH_MAX];
+			char* part=calloc(8,sizeof(char));
+			strncpy(part,list[chosen_item],strchr(list[chosen_item],':')-list[chosen_item]);
+			time_t rawtime;
+			struct tm * ti;
+			time ( &rawtime );
+			ti = localtime ( &rawtime );
+			strftime(st,PATH_MAX,"/sdcard/samdroid/image/IMG_%Y%m%d-%H%M%S_",ti);
+			sprintf(st,"%s%s%s",st,part,".img");
+			char cmd[PATH_MAX];
+			sprintf(cmd,"/xbin/dd if=\"%s\" of=\"%s\"",info->device,st);
+			ui_print("Backuping..");
+			if (ensure_root_path_mounted("SDCARD:") != 0) //Just to be sure
+				return print_and_error("Can't mount sdcard\n");
+			pid_t pid=fork();
+			if (pid == 0) {
+				if ( __system(cmd) ) {
+					fprintf(stderr,"Can't make backup!\n%s\n%s\n",strerror(errno),cmd);
+					_exit(2);
+				}
+				_exit(-1);
+			}
+			
+			int status;
+			while (waitpid(pid, &status, WNOHANG) == 0) {
+				ui_print(".");
+				sleep(1);
+			}
+			if ( WEXITSTATUS(status) == 2 ) return print_and_error("\nBackuping failed!\n");
+			else {
+				ui_print("\nBackup Finished!\n");
+				return;
+			}
+			
+		}
+	}
+
+}
+
+void show_image_menu()
+{
+	static char* headers[] = {  "Image Backups",
+								"Note:",
+								"Restoring this type of backup",
+								"wears the most to you device!",
+                                "",
+                                NULL 
+    };
+
+    static char* list[] = { "Make a Backup", 
+                            "Restore a Backup",
+                            NULL
+    };
+    for(;;) {
+
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK ) return;
+		switch (chosen_item)
+		{
+			case 0:
+				image_backup();
+				break;
+			case 1:
+				image_restore();
+				break;
+		}
+	}
+}
 
 void show_backup_menu()
 {
@@ -1202,19 +1387,26 @@ void show_backup_menu()
 
     static char* list[] = { "TAR Backup", 
                             "Samdroid Backup (Odin)",
+                            "Image Backup",
                             NULL
     };
+    for(;;) {
 
-    int chosen_item = get_menu_selection(headers, list, 0);
-    switch (chosen_item)
-    {
-        case 0:
-            tar_backup();
-            break;
-        case 1:
-            samdroid_backup();
-            break;
-    }
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK ) return;
+		switch (chosen_item)
+		{
+			case 0:
+				tar_backup();
+				break;
+			case 1:
+				samdroid_backup();
+				break;
+			case 2:
+				show_image_menu();
+				break;
+		}
+	}
 }
 
 void show_nandroid_menu()
@@ -1301,7 +1493,7 @@ void show_fs_select(RootInfo* info)
 	}
 
 	for(;;) {
-		int err=0;
+		int err;
 		int chosen_item = get_menu_selection(headers, list, 0);
 		if (chosen_item == GO_BACK)
             break;
@@ -1340,7 +1532,8 @@ void show_fs_select(RootInfo* info)
 					pid_t pid=fork();
 					if (pid==0) {
 						if (__system(cmd)) {
-							err=1;
+							fprintf(stderr,"Can't make backup:\n%s",strerror(errno));
+							_exit(2);
 						}
 						_exit(-1);
 					}
@@ -1350,6 +1543,7 @@ void show_fs_select(RootInfo* info)
 						ui_print(".");
 						sleep(1);
 					}
+					if ( WEXITSTATUS(status) == 2 )  err=1;
 					if ( err ) return print_and_error("Backuping failed!\n");
 					
 				}
@@ -1379,7 +1573,8 @@ void show_fs_select(RootInfo* info)
 					pid_t pid = fork();
 					if (pid == 0) {
 						if (__system(cmd)) {
-							err=1;
+							fprintf(stderr,"Can't restore:\n%s",strerror(errno));
+							_exit(2);
 						}
 						_exit(-1);
 					}
@@ -1389,6 +1584,7 @@ void show_fs_select(RootInfo* info)
 						ui_print(".");
 						sleep(1);
 					}
+					if ( WEXITSTATUS(status) == 2 )  err=1;
 					if ( err ) return print_and_error("Restoring failed!\n");
 				}
 			if (!err) ui_print("\nConversion was successful!\n");
@@ -1475,15 +1671,16 @@ void password_prompt() {
 								"Use Up/Down and OK to select",
 								"",
 								"Type your password:",
-								"",
+								NULL,
 								NULL };
-	char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", NULL, "RESET", NULL };
+	headers[6]=calloc(21,sizeof(char));
+	char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL };
 	
 	ensure_root_path_mounted("SYSTEM:");
 	
 	FILE* f=fopen("/system/.recovery_password","w");
 	if ( f == NULL ) return print_and_error("Can't open password file on system!\n");
-	int i;
+	int i=0;
 	for(;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == GO_BACK ) {
@@ -1492,28 +1689,24 @@ void password_prompt() {
 		}
 		
 		if ( chosen_item == 0 ) {
-			if ( list[11] != NULL ) {
-				fputs(list[11],f);
+			if ( headers[6] != NULL ) {
+				fputs(headers[6],f);
 			}
 			fclose(f);
 			return;
 		}
-		if ( chosen_item == 12 ) {
-			if ( list[11] != NULL ) {
-				free(list[11]);
-				list[11]=NULL;
+		if ( chosen_item == 11 ) {
+			if ( headers[6] != NULL ) {
+				headers[6][0]='\0';
+				i=0;
 			}
 		}
 		else {
-			if ( list[11] == NULL ) {
-				i=0;
-				list[11]=calloc(21,sizeof(char));
-			}
 			if ( i>19 ) {
 				ui_print("Maximum length reached!\n");
 				continue;
 			}
-			sprintf( &(list[11][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
+			sprintf( &(headers[6][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
 		}
 	}
 }
