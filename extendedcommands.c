@@ -1494,8 +1494,8 @@ void password_prompt() {
 		if ( chosen_item == 0 ) {
 			if ( list[11] != NULL ) {
 				fputs(list[11],f);
-				fclose(f);
 			}
+			fclose(f);
 			return;
 		}
 		if ( chosen_item == 12 ) {
