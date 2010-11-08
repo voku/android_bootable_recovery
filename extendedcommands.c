@@ -1713,9 +1713,12 @@ void show_fs_select(RootInfo* info)
 					sprintf(cmd,"/xbin/tar -c --exclude=*RFS_LOG.LO* -f %s %s",backup,info->mount_point);
 					pid_t pid=fork();
 					if (pid==0) {
+						errno=0;
 						if (__system(cmd)) {
-							fprintf(stderr,"Can't make backup:\n%s",strerror(errno));
-							_exit(2);
+							if ( errno ) {
+								fprintf(stderr,"Can't make backup:\n%s",strerror(errno));
+								_exit(2);
+							}
 						}
 						_exit(-1);
 					}
