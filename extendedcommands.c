@@ -1141,15 +1141,17 @@ char** get_keys(char** prev,char start, char stop) {
 	return list;
 }
 
-char write_key_to_header(char** headers, char key) {
+char write_key_to_buffer(char* buffer, int buf_len, char key) {
 	int i;
-	for (i=0; headers[i]!=NULL; ++i);
-	if ( i>=PATH_MAX-1 ) {
+	//buf_len is including \0
+	for (i=0; buffer!=NULL && i<buf_len && buffer[i]!='\0'; ++i);
+	i--;
+	if ( i>=buf_len-1 ) {
 		ui_print("Maximum length reached\n");
+		buffer[i+1]='\0'; //Just to be absolute safe
 		return 0;
 	}
-	i-=1;
-	sprintf(headers[i],"%s%c",headers[i],key);
+	sprintf(buffer,"%s%c",buffer,key);
 	return key;
 }
 
@@ -1158,7 +1160,7 @@ char numeric_keyboard(char** headers) {
 	for (;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == GO_BACK ) return 0;
-		return write_key_to_header(headers,'0'+chosen_item);
+		return '0'+chosen_item;
 	}
 }
 
@@ -1167,7 +1169,7 @@ char alpha_big_keyboard(char** headers) {
 	for (;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == GO_BACK ) return 0;
-		return write_key_to_header(headers,'A'+chosen_item);
+		return 'A'+chosen_item;
 	}
 }
 
@@ -1176,7 +1178,7 @@ char alpha_little_keyboard(char** headers) {
 	for (;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == GO_BACK ) return 0;
-		return write_key_to_header(headers,'a'+chosen_item);
+		return 'a'+chosen_item;
 	}
 }
 
@@ -1196,16 +1198,22 @@ char other_keyboard(char** headers) {
 		int chosen_item=get_menu_selection(headers,list,0);
 		if ( chosen_item == GO_BACK ) return 0;
 		if ( chosen_item < first )
-			return write_key_to_header(headers,' '+chosen_item);
+			return ' '+chosen_item;
 		if ( chosen_item < second )
-			return write_key_to_header(headers,':'+chosen_item-first);
+			return ':'+chosen_item-first;
 		if ( chosen_item < third )
-			return write_key_to_header(headers,'['+chosen_item-second);
-		return write_key_to_header(headers,'{'+chosen_item-third);
+			return '['+chosen_item-second;
+		return '{'+chosen_item-third;
 	}
 }
 
-char keyboard(char** headers) {
+char* keyboard(char* title, char* buffer, int buf_len) {
+	char* headers[] = { title,
+						"",
+						buffer,
+						NULL
+	};
+					
 	static char* list[] = {  "Numeric keys",
 							 "ALPHABETIC keys",
 							 "alphabetic keys",
@@ -1217,33 +1225,29 @@ char keyboard(char** headers) {
 	for (;;) {
 		int i;
 		int chosen_item=get_menu_selection(headers,list,0);
-		if ( chosen_item == GO_BACK ) return 0;
+		if ( chosen_item == GO_BACK ) return buffer;
+		char key;
 		switch (chosen_item) {
 			case 0:
-				while ( numeric_keyboard(headers) ) {}
+				while ( (key=numeric_keyboard(headers)) ) { write_key_to_buffer(buffer,buf_len,key); }
 				break;
 			case 1:
-				while ( alpha_big_keyboard(headers) ) {}
+				while ( (key=alpha_big_keyboard(headers)) ) { write_key_to_buffer(buffer,buf_len,key); }
 				break;
 			case 2:
-				while ( alpha_little_keyboard(headers) ) {}
+				while ( (key=alpha_little_keyboard(headers)) ) { write_key_to_buffer(buffer,buf_len,key); }
 				break;
 			case 3:
-				while ( other_keyboard(headers) ) {}
+				while ( (key=other_keyboard(headers)) ) { write_key_to_buffer(buffer,buf_len,key); }
 				break;
 			case 4:
-				for (i=0; headers[i]!=NULL; ++i);
-				i-=1;
-				headers[i][strlen(headers[i])-1]='\0';
+				buffer[strlen(buffer)-1]='\0';
 				break;
 			case 5:
-				for (i=0; headers[i]!=NULL; ++i);
-				i-=1;
-				free(headers[i]);
-				headers[i]=calloc(PATH_MAX,sizeof(char));
+				buffer[0]='\0';
 				break;
 			default:
-				return 0;
+				break;
 				
 		}
 	}
@@ -1265,7 +1269,7 @@ void show_terminal() {
 		if ( chosen_item == GO_BACK ) return 0;
 		switch (chosen_item) {
 			case 0:
-				while ( keyboard(headers) ) {}
+				keyboard("Terminal",headers[2],PATH_MAX);
 				break;
 			case 1:
 				ui_print("Executing command..");
