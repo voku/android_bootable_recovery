@@ -90,6 +90,7 @@ internal_root_mounted(const RootInfo *info)
 void recheck() {
 	check_need=1;
 }
+	
 
 //We are actually not using it, but mkfs and e2fsck look for it.
 void create_mtab() {

@@ -964,7 +964,7 @@ static void
                 case BRTYPE_B_DATA:
                     if (ensure_root_path_mounted("SDCARD:")) { ui_print("\nError mount sdcard\n"); return; }
                     ui_print("\nBackuping: ");
-                    ui_print(backup_parts[chosen_item-1]);
+                    ui_print(backup_parts[chosen_item]);
                     ui_print("\n");
 
                     // create backup folder
@@ -976,12 +976,12 @@ static void
                     time ( &rawtime );
                     ti = localtime ( &rawtime );
                     strftime(st,255,"/sdcard/samdroid/Backup_%Y%m%d-%H%M%S_",ti);
-                    strcat(st, backup_file[chosen_item-1]);
+                    strcat(st, backup_file[chosen_item]);
                     strcat(st, ".tar");
 
                     pid_t pid = fork();
                     if (pid == 0) {
-                        char *args[] = {"/xbin/busybox", "tar", "-c", "--exclude=*RFS_LOG.LO*", "-f", st, backup_parts[chosen_item-1], NULL};
+                        char *args[] = {"/xbin/busybox", "tar", "-c", "--exclude=*RFS_LOG.LO*", "-f", st, backup_parts[chosen_item], NULL};
                         execv("/xbin/busybox", args);
                         fprintf(stderr, "E:Can't backup\n(%s)\n", strerror(errno));
                         _exit(-1);
@@ -1930,6 +1930,49 @@ void show_passwd_menu()
 	}
 }
 
+int e2fsck(char* name) {
+	RootInfo* info=get_root_info_for_path(name);
+	if (!ensure_root_path_unmounted(name)) {
+		char cmd[PATH_MAX];
+		sprintf(cmd,"/xbin/e2fsck -fyc %s",info->device);
+		__system(cmd);
+		return 0;
+	} else return 1;
+}
+
+void show_fs_check()
+{
+	char* list[]={   "SDEXT:",
+					 NULL,
+					 NULL,
+					 NULL
+						};
+	char* headers[]={ "       Filesystem check",
+					 "      Select a partition:",
+					 "",
+					 NULL
+	};
+	if ( list[1] != NULL ) free(list[1]);
+	RootInfo* info;
+	if ( (info=get_root_info_for_path("DATA:")) && strncmp(info->filesystem,"ext",3) == 0 ) {
+		list[1]=malloc(6*sizeof(char));
+		strcpy(list[1],"DATA:");
+	}
+	if ( list[2] != NULL ) free(list[2]);
+	if ( (info=get_root_info_for_path("SYSTEM:")) && strncmp(info->filesystem,"ext",3) == 0 ) {
+		list[2]=malloc(8*sizeof(char));
+		strcpy(list[2],"SYSTEM:");
+	} 
+	for (;;)
+    {
+        int chosen_item = get_menu_selection(headers, list, 0);
+        if (chosen_item == GO_BACK)
+            break;
+        if (e2fsck(list[chosen_item])) LOGE("Can't unmount partition!\n");
+        else ui_print("Success\n");
+	}
+}
+
         
 
 void show_advanced_menu()
@@ -1945,6 +1988,7 @@ void show_advanced_menu()
                             "Filesystem conversion",
                             "Recovery Password",
                             "Terminal",
+                            "FS error check",
 #ifndef BOARD_HAS_SMALL_RECOVERY
                             "Partition SD Card",
                             "Fix Permissions",
@@ -1982,7 +2026,10 @@ void show_advanced_menu()
 			case 5:
 				show_terminal();
 				break;
-            case 6:
+			case 6:
+				show_fs_check();
+				break;
+            case 7:
             {
                 static char* ext_sizes[] = { "128M",
                                              "256M",
@@ -2023,7 +2070,7 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
-            case 7:
+            case 8:
             {
                 ensure_root_path_mounted("SYSTEM:");
                 ensure_root_path_mounted("DATA:");
