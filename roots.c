@@ -20,6 +20,7 @@
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <limits.h>
@@ -135,9 +136,11 @@ int create_mknods(int n) {
 static void check_fs() {
 	LOGI("Checking FS types\n");
 	int i;
+	static int already=0; //First check should be called when ALL the Filesystems are unmounted!
 	RootInfo *info;
        for (i = 1 ;i < 4 ;i++){
           info = &g_roots[i];
+          if (!already) info->filesystem_options=malloc(256*sizeof(char)); //1B will be enough for every FS. This way we don't have to allocate new MEM at every recheck.			  
           if ( internal_root_mounted(info) < 0 ) {
 			  if(chdir(info->mount_point)){
 				mkdir(info->mount_point, 0755);  // in case it doesn't already exist
@@ -150,14 +153,12 @@ static void check_fs() {
 				  ensure_root_path_unmounted(info->name); //Just in case e2fsck mounted it
 				  strcpy(info->filesystem,"ext4");
 				  const char options[] = "loop,nodev,nosuid,noatime,nodiratime,data=ordered";
-				  info->filesystem_options=malloc(strlen(options)+1);
 				  strcpy(info->filesystem_options,options);
 			  } else {
 				  info->filesystem=calloc(5,sizeof(char));
 				  if ( !mount(info->device, info->mount_point, "rfs", MS_NODEV | MS_NOSUID, "codepage=utf8,xattr,check=no")) {
 					  strcpy(info->filesystem,"rfs");
 					  const char options[] = "nodev,nosuid,codepage=utf8,xattr,check=no";
-					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
 				  }
 				  else {
@@ -169,20 +170,15 @@ static void check_fs() {
 					  if ( !mount(info->device, info->mount_point, "ext2", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
 					  strcpy(info->filesystem,"ext2");
 					  const char options[] = "nodev,nosuid,noatime,nodiratime";
-					  info->filesystem_options=malloc(strlen(options)+1);
 					  strcpy(info->filesystem_options,options);
 					  }
 					  else if ( !mount(info->device, info->mount_point, "ext4", MS_NODEV | MS_NOSUID | MS_NOATIME | MS_NODIRATIME, NULL)) {
 						  strcpy(info->filesystem,"ext4");
 						  const char options[] = "nodev,nosuid,noatime,nodiratime,data=ordered";
-						  info->filesystem_options=malloc(strlen(options)+1);
 						  strcpy(info->filesystem_options,options);
 					  }
 					  else {
 						  strcpy(info->filesystem,"auto");
-						  if (info->filesystem_options != NULL) {
-							  info->filesystem_options=NULL;
-						  }
 					  }
 				  }
 			  }
@@ -190,6 +186,7 @@ static void check_fs() {
 		  ui_print("."); //A little progress
        }
        ui_print("\n");
+       already=1;
 
        //We don't need them already mounted
        ensure_root_path_unmounted("SYSTEM:");
@@ -499,7 +496,7 @@ format_root_device(const char *root)
 	                char fst[10];
 	                sprintf(fst,"-T %s",info->filesystem);
 	                create_mtab();
-		         LOGW("format: %s as %s\n", info->device, fst);
+		         LOGW("format: %s as %s\n", info->device, info->filesystem);
 	                if (strncmp(info->filesystem, "ext4",4) == 0) {					
 						///xbin/mke2fs -T ext4 -F -q -m 0 -b 4096 -O ^huge_file,extent /sdcard/cm6/data.img
 	                   char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m 0", "-b 4096", "-O ^huge_file,extent", info->device, NULL};
@@ -528,7 +525,7 @@ format_root_device(const char *root)
 		 
 	        int status;
 	
-	        while (waitpid(pid, &status, 0) == 0) {
+	        while (waitpid(pid, &status, WNOHANG) == 0) {
 	            ui_print(".");
 	            sleep(1);
 	        }

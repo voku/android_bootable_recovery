@@ -987,6 +987,7 @@ print_property(const char *key, const char *name, void *cookie) {
     fprintf(stderr, "%s=%s\n", key, name);
 }
 
+
 int
 main(int argc, char **argv) {
 	if (strstr(argv[0], "recovery") == NULL)

@@ -477,8 +477,99 @@ int format_non_mtd_device(const char* root)
     return 0;
 }
 
+void show_format_menu(char* name) {
+
+    RootInfo* info=get_root_info_for_path(name);
+
+    if ( info == NULL ) return print_and_error("Unknown device!\n");
+
+    char header[50];
+	sprintf(header,"Format %s (%s) as...",info->name,info->filesystem);
+	char* headers[] = {  header,
+                                "",
+                                NULL 
+    };
+
+    char* list[] = { 		NULL, 
+                            NULL,
+                            NULL,
+                            NULL
+    };
+
+	if ( !strcmp(info->filesystem,"rfs") ) {
+		list[0]="Don't change FS";
+		list[1]="ext2";
+		list[2]="ext4";
+	}
+	else if ( !strcmp(info->filesystem,"ext2") ) {
+		list[0]="Don't change FS";
+		list[1]="rfs";
+		list[2]="ext4";
+	}
+	else if ( !strcmp(info->filesystem,"ext4") ) {
+		list[0]="Don't change FS";
+		list[1]="rfs";
+		list[2]="ext2";
+	}
+	else if ( !strcmp(info->filesystem,"auto") ) {
+		list[0]="rfs";
+		list[1]="ext2";
+		list[2]="ext4";
+	}
+    
+    for(;;) {
+
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK ) return;
+		if (!confirm_selection(NULL, "Are you sure?"))
+                continue;
+		if (chosen_item == 0) {
+			if ( !strcmp(info->filesystem,"auto") ) {
+				strcpy(info->filesystem,"rfs");
+				const char options[] = "nodev,nosuid,codepage=utf8,xattr,check=no";
+				strcpy(info->filesystem_options,options);
+				ui_print("Formatting %s as %s...\n",info->name,info->filesystem);
+				if ( !format_root_device(info->name) ) ui_print("Success\n");
+				else ui_print("Failed\n");
+			}
+			else {
+				ui_print("Formatting %s as %s...\n",info->name,info->filesystem);
+				if ( !format_root_device(info->name) ) ui_print("Success\n");
+				else ui_print("Failed\n");
+			}
+		}
+		else {
+			if ( !strcmp(list[chosen_item],"ext2") ) {
+				const char options[]="nodev,nosuid,noatime,nodiratime";
+				strcpy(info->filesystem_options,options);
+			}
+			else if ( !strcmp(list[chosen_item],"ext4") ) {
+				const char options[]="nodev,nosuid,noatime,nodiratime,data=ordered";
+				strcpy(info->filesystem_options,options);
+			}
+			else if ( !strcmp(list[chosen_item],"rfs") ) {
+				const char options[]="nodev,nosuid,codepage=utf8,xattr,check=no";
+				strcpy(info->filesystem_options,options);
+			}
+			else {
+				return print_and_error("Unknown FS\n"); //This should not be reached any time, but it's there just to be safe
+			}
+			strcpy(info->filesystem,list[chosen_item]);
+			ui_print("Formatting %s as %s...\n",info->name,info->filesystem);
+			if ( !format_root_device(info->name) ) ui_print("Success\n");
+			else ui_print("Failed\n");
+		}
+		ui_print("Rechecking FS...\n");
+		recheck();
+		info=get_root_info_for_path(name);
+		
+		break;		
+				
+	}
+}
+
 #define MOUNTABLE_COUNT 5
-#define MTD_COUNT 4
+#define MTD_COUNT 3
 #define MMC_COUNT 2
 
 void show_partition_menu()
@@ -498,7 +589,7 @@ void show_partition_menu()
         };
         
     string mtds[MTD_COUNT][2] = {
-        { "format boot", "BOOT:" },
+        //{ "format boot", "BOOT:" },
         { "format system", "SYSTEM:" },
         { "format data", "DATA:" },
         { "format cache", "CACHE:" },
@@ -559,13 +650,7 @@ void show_partition_menu()
         else if (chosen_item < MOUNTABLE_COUNT + MTD_COUNT)
         {
             chosen_item = chosen_item - MOUNTABLE_COUNT;
-            if (!confirm_selection(confirm_format, confirm))
-                continue;
-            ui_print("Formatting %s...\n", mtds[chosen_item][1]);
-            if (0 != format_root_device(mtds[chosen_item][1]))
-                ui_print("Error formatting %s!\n", mtds[chosen_item][1]);
-            else
-                ui_print("Done.\n");
+            show_format_menu(mtds[chosen_item][1]);
         }
         else if (chosen_item < MOUNTABLE_COUNT + MTD_COUNT + MMC_COUNT)
         {
@@ -1065,7 +1150,6 @@ void convert_zip(char* path_)
 		info->device=system_img;
 		info->filesystem="ext4";
 		const char options[] = "loop,nodev,nosuid,noatime,nodiratime,data=ordered";
-		info->filesystem_options=malloc(strlen(options)+1);
 		strcpy(info->filesystem_options,options);
 		ui_print("Formatting System image..");
 		if ( format_root_device("SYSTEM:") ) return print_and_error("Can't format SYSTEM:");
@@ -1088,7 +1172,6 @@ void convert_zip(char* path_)
 			info=get_root_info_for_path("DATA:");
 			info->device=data_img;
 			info->filesystem="ext4";
-			info->filesystem_options=malloc(strlen(options)+1);
 			strcpy(info->filesystem_options,options);
 
 			ui_print("\nFormatting Data image..");
