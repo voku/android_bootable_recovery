@@ -133,10 +133,12 @@ int create_mknods(int n) {
 	else return 1;
 }
 
+
+//First check should be called when ALL the Filesystems are unmounted except SDCARD
 static void check_fs() {
 	LOGI("Checking FS types\n");
 	int i;
-	static int already=0; //First check should be called when ALL the Filesystems are unmounted!
+	static int already=0; //We will allocate the memory for options only in the first run
 	RootInfo *info;
        for (i = 1 ;i < 4 ;i++){
           info = &g_roots[i];
@@ -179,6 +181,7 @@ static void check_fs() {
 					  }
 					  else {
 						  strcpy(info->filesystem,"auto");
+						  info->filesystem_options = NULL; //safety
 					  }
 				  }
 			  }

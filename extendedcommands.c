@@ -1291,7 +1291,10 @@ char other_keyboard(char** headers) {
 }
 
 char* keyboard(char* title, char* buffer, int buf_len) {
+	buffer[0]='\0';
 	char* headers[] = { title,
+						"",
+						"Press back button when finished",
 						"",
 						buffer,
 						NULL
@@ -1349,7 +1352,11 @@ void show_terminal() {
 	headers[2]=calloc(PATH_MAX,sizeof(char));
 	for(;;) {
 		int chosen_item=get_menu_selection(headers,list,0);
-		if ( chosen_item == GO_BACK ) return 0;
+		if ( chosen_item == GO_BACK ){
+			free(headers[2]);
+			headers[2]=NULL;
+			return 0;
+		}
 		switch (chosen_item) {
 			case 0:
 				keyboard("Terminal",headers[2],PATH_MAX);
@@ -1387,6 +1394,8 @@ void show_terminal() {
 				break;
 		}
 	}
+	free(headers[2]);
+	headers[2]=NULL;
 	
 }
 		
@@ -1936,51 +1945,25 @@ void show_fs_menu()
 	}
 }
 
-void password_prompt() {
-	char* headers[] = { 	"   Password prompt by Xmister",
-								"   -- Samsung Spica i5700 --",
-								"",
-								"Use Up/Down and OK to select",
-								"",
-								"Type your password:",
-								NULL,
-								NULL };
-	headers[6]=calloc(21,sizeof(char));
-	char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL };
+char password_prompt() {
+	char ret;
+	char pass[21];
 	
-	ensure_root_path_mounted("SYSTEM:");
+	if ( ensure_root_path_mounted("SYSTEM:") ) print_and_error("Can't mount SYSTEM!\n");
 	
 	FILE* f=fopen("/system/.recovery_password","w");
 	if ( f == NULL ) return print_and_error("Can't open password file on system!\n");
-	int i=0;
-	for(;;) {
-		int chosen_item=get_menu_selection(headers,list,0);
-		if ( chosen_item == GO_BACK ) {
-			fclose(f);
-			return;
-		}
-		
-		if ( chosen_item == 0 ) {
-			if ( headers[6] != NULL ) {
-				fputs(headers[6],f);
-			}
-			fclose(f);
-			return;
-		}
-		if ( chosen_item == 11 ) {
-			if ( headers[6] != NULL ) {
-				headers[6][0]='\0';
-				i=0;
-			}
-		}
-		else {
-			if ( i>19 ) {
-				ui_print("Maximum length reached!\n");
-				continue;
-			}
-			sprintf( &(headers[6][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
-		}
+
+	keyboard("Type your new password:",pass,21);
+
+	if ( strlen(pass) > 0 ) {
+		fputs(pass,f);
+		ret=0;
+	} else {
+		ret=1;
 	}
+	fclose(f);
+	return ret;
 }
 
 void show_passwd_menu()
@@ -2001,7 +1984,8 @@ void show_passwd_menu()
         switch (chosen_item)
         {
             case 0:
-				password_prompt();
+				if ( password_prompt() ) ui_print("Old password kept.\n");
+				else ui_print("New password set!\n");
 				break;
 			case 1:
 				if ( !unlink("/system/.recovery_password") ) {

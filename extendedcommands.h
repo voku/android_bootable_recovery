@@ -47,3 +47,6 @@ void
 wipe_battery_stats();
 
 void create_fstab();
+
+char*
+keyboard(char* title, char* buffer, int buf_len);

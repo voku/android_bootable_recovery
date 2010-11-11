@@ -682,55 +682,20 @@ void show_wipe_menu() { //by LeshaK
     }
 }
 
-static char password() {
-	char* headers[] = { 	"   Password prompt by Xmister",
-                                "   -- Samsung Spica i5700 --",
-                                "",
-                                "Use Up/Down and OK to select",
-                                "",
-                                "Type your password:",
-                                NULL,
-                                NULL };
-    headers[6]=calloc(21,sizeof(char));
-    char* list[] = { "OK", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "RESET", NULL };
-
-	ensure_root_path_mounted("SYSTEM:");
+int password() {
+	if ( ensure_root_path_mounted("SYSTEM:") ) return 0;
 	
     FILE* f=fopen("/system/.recovery_password","r");
     if ( f == NULL ) return 0;
-	char* pass=calloc(50,sizeof(char));
-	fgets(pass,49,f);
-	fclose(f);
-	int i=0;
-	for(;;) {
-		int chosen_item=get_menu_selection(headers,list,0);
-		if ( chosen_item == 0 ) {
-			if ( headers[6] != NULL && !strcmp( pass , headers[6] ) ) {
-				return 0;
-			}
-			else {
-				ui_print("Wrong password!\n");
-				if ( headers[6] != NULL ) {
-					headers[6][0]='\0';
-					i=0;
-				}
-				continue;
-			}
-		}
-		if ( chosen_item == 11 ) {
-			if ( headers[6] != NULL ) {
-				headers[6][0]='\0';
-				i=0;
-			}
-		}
-		else {
-			if ( i>19 ) {
-				ui_print("Maximum length reached!\n");
-				continue;
-			}
-			sprintf( &(headers[6][i++]),"%c",(char)( ((int)'0')+chosen_item-1 ) );
-		}
+	char pass[21];
+	char type[21];
+	if ( fgets(pass,20,f) == NULL ) {
+		fclose(f);
+		return 0;
 	}
+	fclose(f);
+	keyboard("Type your password:",type,21);
+	return strcmp(pass,type);
 		
 }
 
@@ -746,18 +711,24 @@ prompt_and_wait() {
 
 	recheck();  //We should recheck the Filesystems.
 
-	password();
+	ui_reset_progress();
+
+    allow_display_toggle = 0;
+
+    while ( password() != 0 ) {
+		ui_print("Wrong password\n");
+	}
 	
 	if ( multi ) items[ITEM_BACK] = "Choose another OS";
 	else items[ITEM_BACK] = "Recheck Filesystems";
 
 	/*FS INFO*/
     ui_print("%s Filesystems:\n",os);
-		RootInfo * fst = (char *)get_root_info_for_path("SYSTEM:");
+		RootInfo * fst = get_root_info_for_path("SYSTEM:");
 		ui_print(" SYSTEM:\t%s\n",fst->filesystem);
-		fst = (char *)get_root_info_for_path("DATA:");
+		fst = get_root_info_for_path("DATA:");
 		ui_print(" DATA:\t%s\n",fst->filesystem);
-		fst = (char *)get_root_info_for_path("CACHE:");
+		fst = get_root_info_for_path("CACHE:");
 		ui_print(" CACHE:\t%s\n",fst->filesystem);
 	ui_print("\n\n");
 	
@@ -1140,6 +1111,7 @@ main(int argc, char **argv) {
 		if ( reboot_method < 2 )finish_recovery(send_intent);
 		else {
 			ui_print("Rebooting to recovery...\n");
+			sync();
 			__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, "recovery");
 			return EXIT_SUCCESS;
 		}
