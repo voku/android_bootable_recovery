@@ -833,6 +833,10 @@ static char
 	//In case if something goes wrong
 	ui_print("."); //9
 	finish_recovery(NULL);
+
+	ui_reset_progress();
+
+    allow_display_toggle = 0;
 	
 	
     for (;;) {
