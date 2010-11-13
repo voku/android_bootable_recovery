@@ -329,7 +329,7 @@ void show_choose_zip_menu()
 
 // This was pulled from bionic: The default system command always looks
 // for shell in /system/bin/sh. This is bad.
-#define _PATH_BSHELL "/sbin/ash"
+#define _PATH_BSHELL "/xbin/busybox"
 
 extern char **environ;
 int

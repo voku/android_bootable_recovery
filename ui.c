@@ -38,7 +38,8 @@ static int gShowBackButton = 0;
 #define MAX_COLS 64
 #define MAX_ROWS 32 
 
-#define MENU_MAX_COLS 64
+//#define MENU_MAX_COLS 64
+#define MENU_MAX_COLS 255
 #define MENU_MAX_ROWS 250
 
 #define CHAR_WIDTH 10
@@ -93,6 +94,7 @@ static char menu[MENU_MAX_ROWS][MENU_MAX_COLS];
 static int show_menu = 0;
 static int menu_top = 0, menu_items = 0, menu_sel = 0;
 static int menu_show_start = 0;             // this is line which menu display is starting at 
+static unsigned int menu_start_char = 0; //The first char to be displayed (If not higher than the last char of an item)
 
 // Key event input queue
 static pthread_mutex_t key_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -195,23 +197,28 @@ static void draw_screen_locked(void)
                 j = menu_items - menu_show_start;
 
             gr_color(MENU_TEXT_COLOR);
+            unsigned int max=0;
             for (i = menu_show_start + menu_top; i < (menu_show_start + menu_top + j); ++i) {
+				unsigned int x;
+				if ( strlen(menu[i]) > max ) max = strlen(menu[i]);
+				for (x=menu_start_char; x >= strlen(menu[i]) || menu[i][x] == '\0'; --x);
                 if (i == menu_top + menu_sel) {
                     gr_color(255, 255, 255, 255);
-                    draw_text_line(i - menu_show_start , menu[i]);
+                    draw_text_line(i - menu_show_start , &(menu[i][x]));
                     gr_color(MENU_TEXT_COLOR);
                 } else {
                     gr_color(MENU_TEXT_COLOR);
-                    draw_text_line(i - menu_show_start, menu[i]);
+                    draw_text_line(i - menu_show_start, &(menu[i][x]));
                 }
                 row++;
             }
+            if ( menu_start_char >= max ) menu_start_char = max-1;
             gr_fill(0, row*CHAR_HEIGHT+CHAR_HEIGHT/2-1,
                     gr_fb_width(), row*CHAR_HEIGHT+CHAR_HEIGHT/2+1);
         }
 
         gr_color(NORMAL_TEXT_COLOR);
-        for (; row < text_rows; ++row) {
+        for (++row; row < text_rows; ++row) { //Fix for writing on the line
             draw_text_line(row, text[(row+text_top) % text_rows]);
         }
     }
@@ -502,8 +509,8 @@ int ui_start_menu(char** headers, char** items) {
         for (; i < MENU_MAX_ROWS; ++i) {
             if (items[i-menu_top] == NULL) break;
             strcpy(menu[i], MENU_ITEM_HEADER);
-            strncpy(menu[i] + MENU_ITEM_HEADER_LENGTH, items[i-menu_top], text_cols-1 - MENU_ITEM_HEADER_LENGTH);
-            menu[i][text_cols-1] = '\0';
+            strncpy(menu[i] + MENU_ITEM_HEADER_LENGTH, items[i-menu_top], MENU_MAX_COLS-1 - MENU_ITEM_HEADER_LENGTH);
+            menu[i][MENU_MAX_COLS-1] = '\0';
         }
 
         if (gShowBackButton) {
@@ -514,6 +521,7 @@ int ui_start_menu(char** headers, char** items) {
         menu_items = i - menu_top;
         show_menu = 1;
         menu_sel = menu_show_start = 0;
+        menu_start_char = 0;
         update_screen_locked();
     }
     pthread_mutex_unlock(&gUpdateMutex);
@@ -521,6 +529,21 @@ int ui_start_menu(char** headers, char** items) {
         return menu_items - 1;
     }
     return menu_items;
+}
+
+void ui_menu_offset_inc() {
+	pthread_mutex_lock(&gUpdateMutex);
+	++menu_start_char;
+	update_screen_locked();
+	pthread_mutex_unlock(&gUpdateMutex);
+}
+
+void ui_menu_offset_dec() {
+	pthread_mutex_lock(&gUpdateMutex);
+	if ( menu_start_char > 0 )
+		--menu_start_char;
+	update_screen_locked();
+	pthread_mutex_unlock(&gUpdateMutex);
 }
 
 int ui_menu_select(int sel) {

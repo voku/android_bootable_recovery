@@ -44,7 +44,7 @@ LOCAL_MODULE := recovery
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 
-RECOVERY_VERSION := CM Recovery v2.5.1.0 & LK+XM0.4
+RECOVERY_VERSION := CM Recovery v2.5.1.0 & LK+XM0.5
 LOCAL_CFLAGS += -DRECOVERY_VERSION="$(RECOVERY_VERSION)"
 RECOVERY_API_VERSION := 2
 LOCAL_CFLAGS += -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
@@ -147,7 +147,7 @@ ifeq ($(BOARD_CUSTOM_RECOVERY_KEYMAPPING),)
 else
   LOCAL_SRC_FILES += $(BOARD_CUSTOM_RECOVERY_KEYMAPPING)
 endif
-LOCAL_STATIC_LIBRARIES += libbusybox libclearsilverregex libmkyaffs2image libunyaffs liberase_image libdump_image libflash_image libmtdutils
+LOCAL_STATIC_LIBRARIES += libclearsilverregex libmkyaffs2image libunyaffs liberase_image libdump_image libflash_image libmtdutils
 LOCAL_STATIC_LIBRARIES += libamend
 LOCAL_STATIC_LIBRARIES += libminzip libunz libmtdutils libmmcutils libmincrypt
 LOCAL_STATIC_LIBRARIES += libminui libpixelflinger_static libpng libcutils
@@ -155,7 +155,7 @@ LOCAL_STATIC_LIBRARIES += libstdc++ libc
 
 include $(BUILD_EXECUTABLE)
 
-RECOVERY_LINKS := amend busybox flash_image dump_image mkyaffs2image unyaffs erase_image nandroid reboot
+RECOVERY_LINKS := amend flash_image dump_image mkyaffs2image unyaffs erase_image nandroid reboot
 
 # nc is provided by external/netcat
 SYMLINKS := $(addprefix $(TARGET_RECOVERY_ROOT_OUT)/sbin/,$(RECOVERY_LINKS))
@@ -169,16 +169,16 @@ $(SYMLINKS): $(LOCAL_INSTALLED_MODULE)
 ALL_DEFAULT_INSTALLED_MODULES += $(SYMLINKS)
 
 # Now let's do recovery symlinks
-BUSYBOX_LINKS := $(shell cat external/busybox/busybox-minimal.links)
-SYMLINKS := $(addprefix $(TARGET_RECOVERY_ROOT_OUT)/sbin/,$(filter-out $(exclude),$(notdir $(BUSYBOX_LINKS))))
-$(SYMLINKS): BUSYBOX_BINARY := busybox
-$(SYMLINKS): $(LOCAL_INSTALLED_MODULE)
-	@echo "Symlink: $@ -> $(BUSYBOX_BINARY)"
-	@mkdir -p $(dir $@)
-	@rm -rf $@
-	$(hide) ln -sf $(BUSYBOX_BINARY) $@
+#BUSYBOX_LINKS := $(shell cat external/busybox/busybox-minimal.links)
+#SYMLINKS := $(addprefix $(TARGET_RECOVERY_ROOT_OUT)/sbin/,$(filter-out $(exclude),$(notdir $(BUSYBOX_LINKS))))
+#$(SYMLINKS): BUSYBOX_BINARY := /xbin/busybox
+#$(SYMLINKS): $(LOCAL_INSTALLED_MODULE)
+#	@echo "Symlink: $@ -> $(BUSYBOX_BINARY)"
+#	@mkdir -p $(dir $@)
+#	@rm -rf $@
+#	$(hide) ln -sf $(BUSYBOX_BINARY) $@
 
-ALL_DEFAULT_INSTALLED_MODULES += $(SYMLINKS)
+#ALL_DEFAULT_INSTALLED_MODULES += $(SYMLINKS)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := nandroid-md5.sh

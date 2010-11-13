@@ -65,6 +65,11 @@ int device_handle_key(int key_code, int visible) {
             case KEY_VOLUMEUP:
                 return HIGHLIGHT_UP;
 
+            case KEY_LEFT:
+				return SCROLL_LEFT;
+			case KEY_RIGHT:
+				return SCROLL_RIGHT;
+
             case KEY_POWER:
                 if (ui_get_showing_back_button()) {
                     return SELECT_ITEM;

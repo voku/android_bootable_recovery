@@ -27,6 +27,8 @@ int ui_wait_key();            // waits for a key/button press, returns the code
 int ui_key_pressed(int key);  // returns >0 if the code is currently pressed
 int ui_text_visible();        // returns >0 if text log is currently visible
 void ui_clear_key_queue();
+void ui_menu_offset_inc(); //for horizontal scrolling
+void ui_menu_offset_dec();
 
 // Write a message to the on-screen log shown with Alt-L (also to stderr).
 // The screen is small, and users may need to report these messages to support,
@@ -118,6 +120,8 @@ void ui_reset_progress();
 #define KEY_I5700_CENTER      204
 #define KEY_I5700_DOWN	      210
 #define KEY_I5700_UP          202
+#define KEY_I5700_LEFT		  218  //For horizontal scrolling
+#define KEY_I5700_RIGHT		  203
 
 //Redefine defaults
 #undef KEY_HOME
@@ -150,6 +154,10 @@ void ui_reset_progress();
 #define KEY_DOWN KEY_I5700_DOWN
 #undef KEY_UP
 #define KEY_UP KEY_I5700_UP
+#undef KEY_LEFT
+#define KEY_LEFT KEY_I5700_LEFT
+#undef KEY_RIGHT
+#define KEY_RIGHT KEY_I5700_RIGHT
 #undef KEY_SEND
 #define KEY_SEND KEY_I5700_CENTER
 

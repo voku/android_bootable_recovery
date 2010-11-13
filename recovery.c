@@ -373,9 +373,15 @@ get_menu_selection(char** headers, char** items, int menu_only) {
 
         int action = device_handle_key(key, visible);
         int old_selected = selected;
-
+        
         if (action < 0) {
             switch (action) {
+				case SCROLL_LEFT:
+					ui_menu_offset_dec();
+					break;
+				case SCROLL_RIGHT:
+					ui_menu_offset_inc();
+					break;
                 case HIGHLIGHT_UP:
                     --selected;
                     selected = ui_menu_select(selected);
@@ -985,7 +991,7 @@ main(int argc, char **argv) {
             return reboot_main(argc, argv);
         if (strstr(argv[0], "setprop"))
             return setprop_main(argc, argv);
-		return busybox_driver(argc, argv);
+		//return busybox_driver(argc, argv);
 	}
     //create_fstab();
     
