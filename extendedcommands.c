@@ -1757,7 +1757,7 @@ void show_fs_select(RootInfo* info)
 					 NULL
 	};
 	
-	if ( !strcmp(info->name,"CACHE:") ) {
+	if ( strcmp(info->name,"CACHE:") ) {
 		int ret;
 		struct statfs s;
 		if (0 != (ret = statfs("/sdcard", &s)))
@@ -1771,7 +1771,7 @@ void show_fs_select(RootInfo* info)
 	}
 
 	for(;;) {
-		int err;
+		int err=0;
 		int chosen_item = get_menu_selection(headers, list, 0);
 		if (chosen_item == GO_BACK)
             break;
@@ -1792,6 +1792,7 @@ void show_fs_select(RootInfo* info)
 					err=1;
 					return print_and_error("Backup failed:\nCan't mount filesystem!\n");
 				}
+				if ( chdir("/") ) return print_and_error("Can't change directory!\n");
 				char old[10];
 				char new[10];
 				strcpy(old,info->filesystem);
@@ -1809,14 +1810,7 @@ void show_fs_select(RootInfo* info)
 					sprintf(cmd,"/xbin/tar -c --exclude=*RFS_LOG.LO* -f %s %s",backup,info->mount_point);
 					pid_t pid=fork();
 					if (pid==0) {
-						errno=0;
-						if (__system(cmd)) {
-							if ( errno ) {
-								fprintf(stderr,"Can't make backup:\n%s",strerror(errno));
-								_exit(2);
-							}
-						}
-						_exit(-1);
+						_exit(__system(cmd));
 					}
 					int status;
 
@@ -1825,7 +1819,7 @@ void show_fs_select(RootInfo* info)
 						sleep(1);
 					}
 					if ( WEXITSTATUS(status) == 2 )  err=1;
-					if ( err ) return print_and_error("Backuping failed!\n");
+					if ( err ) return print_and_error("\nBackuping failed!\n");
 					
 				}
 				if (ensure_root_path_unmounted(info->name)) {

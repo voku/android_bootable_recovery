@@ -39,7 +39,7 @@ static int gShowBackButton = 0;
 #define MAX_ROWS 32 
 
 //#define MENU_MAX_COLS 64
-#define MENU_MAX_COLS 255
+#define MENU_MAX_COLS 255 //For horizontal scrolling
 #define MENU_MAX_ROWS 250
 
 #define CHAR_WIDTH 10
