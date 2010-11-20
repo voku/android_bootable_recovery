@@ -58,6 +58,7 @@ static RootInfo g_roots[] = {
     { "SDEXT:", SDEXT_DEVICE, NULL, NULL, "/sd-ext", SDEXT_FILESYSTEM, NULL },
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw, NULL },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL, NULL },
+    { "EFS:", EFS_DEVICE, NULL, "efs", "/efs", EFS_FILESYSTEM, EFS_FILESYSTEM_OPTIONS },
 };
 #define NUM_ROOTS (sizeof(g_roots) / sizeof(g_roots[0]))
 

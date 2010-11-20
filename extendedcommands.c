@@ -940,20 +940,24 @@ static void
 
 #define BRTYPE_B_SYS		0
 #define BRTYPE_B_DATA	 	1
-#define BRTYPE_HL1		 	2
-#define BRTYPE_RESTORE	 	3
-#define BRTYPE_REST_FORMAT 	4
+#define BRTYPE_B_EFS	 	2
+#define BRTYPE_HL1		 	3
+#define BRTYPE_RESTORE	 	4
+#define BRTYPE_REST_FORMAT 	5
 
     char st[255];
-    static char* backup_parts[] = { "/system", "/data"};
-    static char* backup_file[] = { "Sys", "Data"};
+    static char* backup_parts[] = { "/system", "/data", "/efs"};
+    static char* backup_file[] = { "Sys", "Data", "Efs"};
 
     static char* items[] = { 	"TAR backup system",
                                 "TAR backup data",
+                                "TAR backup efs",
                                 "    -------",
                                 "TAR restore",
                                 "TAR restore (+ format)",
                                 NULL };
+
+    if (ensure_root_path_mounted("SDCARD:")) { ui_print("\nError mount sdcard\n"); return; }
 
 
     for (;;) {
@@ -983,6 +987,28 @@ static void
                                 if (!format_root_device("DATA:")) ui_print("ok");
                             }
                         }
+                        if (strstr(st, "_Efs.")) {
+	                            if (!ensure_root_path_unmounted("EFS:")) {
+                                ui_print("/efs");
+                                //We won't format EFS without an image backup
+                                int ret;
+								struct statfs s;
+								if (0 != (ret = statfs("/sdcard", &s)))
+									return print_and_error("Unable to stat /sdcard\n");
+								uint64_t bavail = s.f_bavail;
+								uint64_t bsize = s.f_bsize;
+								uint64_t sdcard_free = bavail * bsize;
+								uint64_t sdcard_free_mb = sdcard_free / (uint64_t)(1024 * 1024);
+								if (sdcard_free_mb < 20 ) return print_and_error("You should have at least 20MB free on your SD card\n");
+								if (chdir("/sdcard/samdroid/image")) {
+									__system("mkdir -p /sdcard/samdroid/image");
+								}
+								unlink("/sdcard/samdroid/image/before_tar_restore.img");
+								if (!__system("dd if=/dev/stl10 of=/sdcard/samdroid/image/efs_before_tar_restore.img")) {
+									if (format_root_device("EFS:")) return print_and_error("Can't format EFS\n");
+								}	
+                            }
+                        }
 						case BRTYPE_RESTORE:
                         strcpy(sfpath, "/sdcard/samdroid/");
                         strcat(sfpath, st);
@@ -996,6 +1022,10 @@ static void
                             ui_print("/data");
                             if (ensure_root_path_mounted("DATA:")) { ui_print("\nError mount /data\n"); return; }
                         }
+                        if (strstr(st, "_Efs.")) {
+                            ui_print("/efs");
+                            if (ensure_root_path_mounted("EFS:")) { ui_print("\nError mount /efs\n"); return; }
+                        }
 
                         ui_print("\nRestoring..");
 
@@ -1004,7 +1034,7 @@ static void
                             chdir("/");
                             char *args[] = {"/xbin/tar", "-x","-f", sfpath, NULL};
                             execv("/xbin/tar", args);
-                            fprintf(stderr, "E:Can't backup\n(%s)\n", strerror(errno));
+                            fprintf(stderr, "E:Can't restore\n(%s)\n", strerror(errno));
                             _exit(-1);
                         }
 
@@ -1021,6 +1051,8 @@ static void
                         } else {
                             ui_print("\nRestore complete.\n");
                         }
+                        case BRTYPE_B_EFS:
+							ensure_root_path_unmounted("EFS:");
                         break;
                     }
                     continue;
@@ -1043,12 +1075,26 @@ static void
                 case BRTYPE_B_DATA:
                     if (ensure_root_path_mounted("DATA:")) { ui_print("\nError mount /data\n"); return; }
                     break;
+                case BRTYPE_B_EFS:
+                    if (ensure_root_path_mounted("EFS:")) { ui_print("\nError mount /efs\n"); return; }
+                    break;
                 }
+                int ret;
+				struct statfs s;
+				if (0 != (ret = statfs("/sdcard", &s)))
+					return print_and_error("Unable to stat /sdcard\n");
+				uint64_t bavail = s.f_bavail;
+				uint64_t bsize = s.f_bsize;
+				uint64_t sdcard_free = bavail * bsize;
+				uint64_t sdcard_free_mb = sdcard_free / (uint64_t)(1024 * 1024);
+				
                 switch (chosen_item) {
                 case BRTYPE_B_SYS:
                 case BRTYPE_B_DATA:
-                    if (ensure_root_path_mounted("SDCARD:")) { ui_print("\nError mount sdcard\n"); return; }
-                    ui_print("\nBackuping: ");
+					if (sdcard_free_mb < 220 ) return print_and_error("You should have at least 220MB free on your SD card\n");
+                case BRTYPE_B_EFS:
+					if (sdcard_free_mb < 20 ) return print_and_error("You should have at least 20MB free on your SD card\n");
+                    ui_print("\nBacking up: ");
                     ui_print(backup_parts[chosen_item]);
                     ui_print("\n");
 
@@ -1080,16 +1126,18 @@ static void
                     }
                     ui_print("\n");
 
-                    if (!WIFEXITED(status) || (WEXITSTATUS(status) == 2)) {
+                    if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
                         LOGE("Can't create tar file %s\n", st);
                     } else {
                         ui_print("Backup complete.\n");
                     }
+                    if ( chosen_item == BRTYPE_B_EFS )
+						ensure_root_path_unmounted("EFS:");
                     break;
                 }
 
             } else {
-                ui_print("\nData backup aborted.\n");
+                ui_print("\nBackup aborted.\n");
             }
             if (!ui_text_visible()) break;
         }
@@ -1541,6 +1589,7 @@ void image_backup() {
     static char* list[] = { "DATA:", 
                             "SYSTEM:",
                             "SDEXT:",
+                            "EFS:",
                             NULL
     };
 
@@ -1598,7 +1647,7 @@ void image_backup() {
 			sprintf(st,"%s%s%s",st,part,".img");
 			char cmd[PATH_MAX];
 			sprintf(cmd,"/xbin/dd if=\"%s\" of=\"%s\"",info->device,st);
-			ui_print("Backuping..");
+			ui_print("Backing up..");
 			if (ensure_root_path_mounted("SDCARD:") != 0) //Just to be sure
 				return print_and_error("Can't mount sdcard\n");
 			pid_t pid=fork();
@@ -1615,7 +1664,7 @@ void image_backup() {
 				ui_print(".");
 				sleep(1);
 			}
-			if ( WEXITSTATUS(status) == 2 ) return print_and_error("\nBackuping failed!\n");
+			if ( WEXITSTATUS(status) == 2 ) return print_and_error("\nBacking up failed!\n");
 			else {
 				ui_print("\nBackup Finished!\n");
 				return;
@@ -1806,7 +1855,7 @@ void show_fs_select(RootInfo* info)
 				}
 				char cmd[PATH_MAX];
 				if ( strcmp(info->name,"CACHE:") ) {
-					ui_print("\nBackuping");
+					ui_print("\nBacking up");
 					sprintf(cmd,"/xbin/tar -c --exclude=*RFS_LOG.LO* -f %s %s",backup,info->mount_point);
 					pid_t pid=fork();
 					if (pid==0) {
@@ -1818,8 +1867,8 @@ void show_fs_select(RootInfo* info)
 						ui_print(".");
 						sleep(1);
 					}
-					if ( WEXITSTATUS(status) == 2 )  err=1;
-					if ( err ) return print_and_error("\nBackuping failed!\n");
+					if ( WEXITSTATUS(status) != 0 )  err=1;
+					if ( err ) return print_and_error("\nBacking up failed!\n");
 					
 				}
 				if (ensure_root_path_unmounted(info->name)) {
@@ -1859,7 +1908,7 @@ void show_fs_select(RootInfo* info)
 						ui_print(".");
 						sleep(1);
 					}
-					if ( WEXITSTATUS(status) == 2 )  err=1;
+					if ( WEXITSTATUS(status) != 0 )  err=1;
 					if ( err ) return print_and_error("Restoring failed!\n");
 				}
 			if (!err) ui_print("\nConversion was successful!\n");

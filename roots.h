@@ -69,6 +69,14 @@
 #define SYSTEM_FILESYSTEM "auto"
 #endif
 
+#ifndef EFS_DEVICE
+#define EFS_DEVICE "/dev/stl10"
+#endif
+
+#ifndef EFS_FILESYSTEM
+#define EFS_FILESYSTEM "rfs"
+#endif
+
 #ifndef DATA_FILESYSTEM_OPTIONS
 #define DATA_FILESYSTEM_OPTIONS NULL
 #endif
@@ -83,6 +91,10 @@
 
 #ifndef SYSTEM_FILESYSTEM_OPTIONS
 #define SYSTEM_FILESYSTEM_OPTIONS NULL
+#endif
+
+#ifndef EFS_FILESYSTEM_OPTIONS
+#define EFS_FILESYSTEM_OPTIONS "nodev,nosuid,codepage=utf8,xattr,check=no"
 #endif
 
 
