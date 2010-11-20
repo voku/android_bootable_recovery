@@ -158,10 +158,13 @@ char** gather_files(const char* directory, const char* fileExtensionOrDirectory,
   
     int isCounting = 1;
     i = 0;
-    for (pass = 0; pass < 2; pass++) {
+    for (pass = 0; pass < 2; pass++) { 
         while ((de=readdir(dir)) != NULL) {
-            // skip hidden files
-            if (de->d_name[0] == '.')
+            // don't 'skip hidden files
+            //if (de->d_name[0] == '.')
+            //    continue;
+            //Just skip dir-step files
+            if ( !strcmp(de->d_name,".") || !strcmp(de->d_name,"..") )
                 continue;
             
             // NULL means that we are gathering directories, so skip this
@@ -172,6 +175,15 @@ char** gather_files(const char* directory, const char* fileExtensionOrDirectory,
                     continue;
                 // compare the extension
                 if (strcmp(de->d_name + strlen(de->d_name) - extension_length, fileExtensionOrDirectory) != 0)
+                    continue;
+
+                struct stat info;
+                char fullFileName[PATH_MAX];
+                strcpy(fullFileName, directory);
+                strcat(fullFileName, de->d_name);
+                stat(fullFileName, &info);
+                // make sure it is a directory
+                if (S_ISDIR(info.st_mode))
                     continue;
             }
             else
@@ -990,7 +1002,7 @@ static void
                         if (strstr(st, "_Efs.")) {
 	                            if (!ensure_root_path_unmounted("EFS:")) {
                                 ui_print("/efs");
-                                //We won't format EFS without an image backup
+                                //We won't format EFS without an image backup of the actual device
                                 int ret;
 								struct statfs s;
 								if (0 != (ret = statfs("/sdcard", &s)))
@@ -1984,6 +1996,90 @@ void show_fs_menu()
 			//For rechecking
 			ensure_root_path_unmounted(info->name);
 			recheck();
+		}
+	}
+}
+
+void show_action_menu(char* cmd, int params, char* fileExtensionOrDirectory ) {
+	int i;
+	static char* headers[] = 
+		{ "      File manager","","Select source DIR/FILE:", NULL,"      File manager","","Select destination DIR/FILE:", NULL };
+	static char* head_[] = { 	"      File manager",
+                                "",
+                                "Choose destination type:",
+                                NULL
+	};
+	static char* list[] = {  "FILE",
+							 "DIR",
+							 NULL
+	};
+	char** files=malloc(sizeof(char*)*params);
+	for (i=0; i<params; ++i) {
+		char* temp=choose_file_menu("/", fileExtensionOrDirectory, headers+(i*4));
+		if ( temp == NULL ) return;
+		files[i]=malloc((strlen(temp)+1)*sizeof(char));
+		strcpy(files[i],temp);
+		if ( i == 0 && fileExtensionOrDirectory != NULL && params > 1 ) {
+			int chosen_item=0;
+			for(;;) {
+				chosen_item = get_menu_selection(head_, list, 0);
+				if (chosen_item == GO_BACK ) return;
+				break;
+			}
+			if (chosen_item) fileExtensionOrDirectory = NULL;
+		}
+	}
+	char command[PATH_MAX];
+	if (params > 1)
+		sprintf(command,"%s %s %s",cmd,files[0],files[1]);
+	else
+		sprintf(command,"%s %s",cmd,files[0]);
+	if (__system(command)) LOGE("%s\n",strerror(errno));
+	else ui_print("Success\n");
+	
+}
+			
+		
+
+void show_file_manager() {
+	static char* headers[] = {  "      File manager",
+                                "",
+                                "Choose action",
+                                NULL 
+    };
+
+    static char* list[] = { "COPY FILE", 
+                            "MOVE FILE",
+                            "DELETE FILE",
+                            "COPY DIR", 
+                            "MOVE DIR",
+                            "DELETE DIR",
+                            NULL
+    };
+    for(;;) {
+
+		int chosen_item = get_menu_selection(headers, list, 0);
+		if (chosen_item == GO_BACK ) return;
+		switch (chosen_item)
+		{
+			case 0:
+				show_action_menu("cp -pf",2,"");
+				break;
+			case 1:
+				show_action_menu("mv -f",2,"");
+				break;
+			case 2:
+				show_action_menu("rm -f",1,"");
+				break;
+			case 3:
+				show_action_menu("cp -Rpf",2,NULL);
+				break;
+			case 4:
+				show_action_menu("mv -f",2,NULL);
+				break;
+			case 5:
+				show_action_menu("rm -Rf",1,NULL);
+				break;
 		}
 	}
 }

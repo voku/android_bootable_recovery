@@ -804,6 +804,9 @@ prompt_and_wait() {
             case ITEM_ADVANCED:
                 show_advanced_menu();
                 break;
+            case ITEM_FILE_MANAGER:
+				show_file_manager();
+				break;
             case ITEM_CHOOSE_OS:
                 start_os();
                 break;

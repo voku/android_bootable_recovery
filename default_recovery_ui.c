@@ -29,6 +29,7 @@ char* MENU_ITEMS[] = { "Leave Recovery",
                        "Backup and Restore",
                        "Mounts and Storage",
                        "Advanced",
+                       "File Manager",
                        NULL,
                        NULL,
                        NULL };

@@ -75,8 +75,9 @@ int device_wipe_data();
 #define ITEM_BACKUP          4
 #define ITEM_PARTITION       5
 #define ITEM_ADVANCED        6
-#define ITEM_BACK            7
-#define ITEM_CHOOSE_OS       8
+#define ITEM_FILE_MANAGER	 7
+#define ITEM_BACK            8
+#define ITEM_CHOOSE_OS       9
 
 
 // Header text to display above the main menu.

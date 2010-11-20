@@ -2,9 +2,10 @@ Ultime Spica Recovery
 Based on ClockworkMod Recovery 2.5.1.0
 
 Features:
+- File manager
 - Format as RFS, EXT2, EXT4
 - Full Terminal Emulator
-- IMAGE Backup for DATA SYSTEM and SDEXT
+- IMAGE Backup for DATA SYSTEM SDEXT and EFS
 - Password protection
 - Filesystem check (Supports RFS, EXT2, EXT4)
 - Automatic e2fsck for EXT2 & EXT4
