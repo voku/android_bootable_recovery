@@ -606,16 +606,25 @@ void start_os() {
 					if ( ( f=fopen(file_name,"r") ) ) {
 						fclose(f);
 						char cp_cmd[PATH_MAX];
-						sprintf(cp_cmd,"cp %s %s %s",file_name,"/recovery.rc","/recovery_hardkey.rc"); //Our init looks for recovery.rc when calling init binary under recovery
+						sprintf(cp_cmd,"cp -f %s %s",file_name,"/recovery.rc"); //Our init looks for recovery.rc when calling init binary under recovery
 						if ( !__system(cp_cmd) ) {
-							ui_print("done\nBooting New OS..\nPlease wait...\n");
-							ui_end_menu();
-							finish_recovery(NULL);
-							do_reboot=0;
-							if ( __system("/init") ) {
-								LOGE("Error booting system\n%s\n",strerror(errno));
-							}
-						} else LOGE("Can't copy init.rc\n%s\n",strerror(errno));
+							sprintf(cp_cmd,"cp -f %s %s",file_name,"/recovery_hardkey.rc"); //Our init looks for recovery_hardkey.rc when calling init binary under recovery started with keys
+							if ( !__system(cp_cmd) ) {
+								sprintf(cp_cmd,"cp -f %s %s",file_name,"/init.rc");
+								if ( !__system(cp_cmd) ) {
+									ui_print("done\nBooting New OS..\nPlease wait...\n");
+									ui_end_menu();
+									finish_recovery(NULL);
+									do_reboot=0;
+									/*if ( ( f=fopen("/init_new","r") ) ) {
+										fclose(f);
+										execv("/init_new",NULL);
+									}
+									else*/
+										execv("/init", NULL);
+								} else LOGE("Can't copy init.rc to init.rc\n%s\n%s\n",cp_cmd,strerror(errno));
+							} else LOGE("Can't copy init.rc to recovery_hardkey.rc\n%s\n%s\n",cp_cmd,strerror(errno));
+						} else LOGE("Can't copy init.rc to recovery.rc\n%s\n%s\n",cp_cmd,strerror(errno));
 					} else LOGE("Can't open init.rc\n%s\n",strerror(errno));
 				} else LOGE("Can't mount system image\n%s\n",strerror(errno));
 			} else LOGE("Can't mount data image\n%s\n",strerror(errno));
