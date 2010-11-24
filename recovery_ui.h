@@ -67,6 +67,7 @@ int device_wipe_data();
 #define GO_BACK             -5
 #define SCROLL_LEFT			-6
 #define SCROLL_RIGHT		-7
+#define MENU_PRESSED		-8
 
 #define ITEM_REBOOT          0
 #define ITEM_APPLY_SDCARD    1

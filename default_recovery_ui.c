@@ -92,6 +92,9 @@ int device_handle_key(int key_code, int visible) {
             case KEY_BACK:
                 if (!get_allow_toggle_display())
                     return GO_BACK;
+                break;
+            case KEY_MENU:
+				return MENU_PRESSED;
         }
     }
 

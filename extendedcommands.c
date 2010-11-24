@@ -313,6 +313,134 @@ char* choose_file_menu(const char* directory, const char* fileExtensionOrDirecto
     return return_value;
 }
 
+char* choose_file_menu_(const char* directory, const char* fileExtensionOrDirectory, const char* headers[], int* isdir)
+{
+    char path[PATH_MAX] = "";
+    DIR *dir;
+    struct dirent *de;
+    int numFiles = 0;
+    int numDirs = 0;
+    int i;
+    char* return_value = NULL;
+    int dir_len = strlen(directory);
+	char** files = !(*isdir) ? gather_files(directory, fileExtensionOrDirectory, &numFiles) : NULL;
+    char** dirs = NULL;
+    if (fileExtensionOrDirectory != NULL)
+        dirs = gather_files(directory, NULL, &numDirs);
+    int total = numDirs + numFiles;
+    if (total == 0)
+    {
+        ui_print("No files found.\n");
+    }
+    else
+    {
+        char** list = (char**) malloc((total + 1) * sizeof(char*));
+        list[total] = NULL;
+
+
+        for (i = 0 ; i < numDirs; i++)
+        {
+            list[i] = strdup(dirs[i] + dir_len);
+        }
+
+        for (i = 0 ; i < numFiles; i++)
+        {
+            list[numDirs + i] = strdup(files[i] + dir_len);
+        }
+
+        for (;;)
+        {
+			// throw away keys pressed previously, so user doesn't
+		    // accidentally trigger menu items.
+		    ui_clear_key_queue();
+		
+		    int item_count = ui_start_menu(headers, list);
+		    int selected = 0;
+		    int chosen_item = -1;
+		
+		    int has_selection = 0;
+		
+		    while (chosen_item < 0 && chosen_item != GO_BACK && has_selection == 0) {
+				//ui_menu_select(); //Why was this not here?!
+		        int key = ui_wait_key();
+		        int visible = ui_text_visible();
+		
+		        //ui_print("Key: %d\n",key);
+		
+		        int action = device_handle_key(key, visible);
+		        int old_selected = selected;
+		        
+		        if (action < 0) {
+		            switch (action) {
+						case SCROLL_LEFT:
+							ui_menu_offset_dec();
+							break;
+						case SCROLL_RIGHT:
+							ui_menu_offset_inc();
+							break;
+		                case HIGHLIGHT_UP:
+		                    --selected;
+		                    selected = ui_menu_select(selected);
+		                    break;
+		                case HIGHLIGHT_DOWN:
+		                    ++selected;
+		                    selected = ui_menu_select(selected);
+		                    break;
+		                case SELECT_ITEM:
+		                    chosen_item = selected;
+		                    if (ui_get_showing_back_button()) {
+		                        if (chosen_item == item_count) {
+		                            chosen_item = GO_BACK;
+		                        }
+		                    }
+		                    break;
+		                case NO_ACTION:
+		                    break;
+		                case GO_BACK:
+		                    chosen_item = GO_BACK;
+		                    break;
+		                case MENU_PRESSED:
+							has_selection=1;
+							chosen_item = selected;
+							break;
+		            }
+				}
+			}
+            if (chosen_item == GO_BACK)
+                break;
+            static char ret[PATH_MAX];
+            if (chosen_item < numDirs)
+            {
+				if (has_selection) {
+					has_selection=0;
+					strcpy(ret, dirs[chosen_item]);
+					return_value = ret;
+					*isdir=1;
+					LOGE("%s\n",ret);
+					break;
+				}
+                char* subret = choose_file_menu_(dirs[chosen_item], fileExtensionOrDirectory, headers,isdir);
+                if (subret != NULL)
+                {
+                    strcpy(ret, subret);
+                    return_value = ret;
+                    break;
+                }
+                continue;
+            }
+             
+            strcpy(ret, files[chosen_item - numDirs]);
+            return_value = ret;
+            break;
+        }
+        free_string_array(list);
+    }
+
+    if ( files != NULL ) free_string_array(files);
+    free_string_array(dirs);
+    return return_value;
+}
+
 
 void show_choose_zip_menu()
 {
@@ -2002,40 +2130,32 @@ void show_fs_menu()
 
 void show_action_menu(char* cmd, int params, char* fileExtensionOrDirectory ) {
 	int i;
+	int isdir=0;
 	static char* headers[] = 
-		{ "      File manager","","Select source DIR/FILE:", NULL,"      File manager","","Select destination DIR/FILE:", NULL };
-	static char* head_[] = { 	"      File manager",
-                                "",
-                                "Choose destination type:",
-                                NULL
-	};
-	static char* list[] = {  "FILE",
-							 "DIR",
-							 NULL
-	};
+		{ "      File manager","","Select source DIR/FILE:","OK: Step into","Menu: Select", NULL,"      File manager","","Select destination DIR/FILE:","OK: Step into","Menu: Select", NULL };
 	char** files=malloc(sizeof(char*)*params);
 	for (i=0; i<params; ++i) {
-		char* temp=choose_file_menu("/", fileExtensionOrDirectory, headers+(i*4));
+		char* temp=choose_file_menu_("/", fileExtensionOrDirectory, headers+(i*6),&isdir);
 		if ( temp == NULL ) return;
 		files[i]=malloc((strlen(temp)+1)*sizeof(char));
 		strcpy(files[i],temp);
-		if ( i == 0 && fileExtensionOrDirectory != NULL && params > 1 ) {
-			int chosen_item=0;
-			for(;;) {
-				chosen_item = get_menu_selection(head_, list, 0);
-				if (chosen_item == GO_BACK ) return;
-				break;
-			}
-			if (chosen_item) fileExtensionOrDirectory = NULL;
-		}
 	}
 	char command[PATH_MAX];
-	if (params > 1)
-		sprintf(command,"%s %s %s",cmd,files[0],files[1]);
+	if (params > 1) {
+		if ( !strcmp(cmd,"mv -f") || !isdir )
+			sprintf(command,"%s %s %s",cmd,files[0],files[1]);
+		else if ( isdir )
+			sprintf(command,"%s %s %s %s",cmd,"-R",files[0],files[1]);
+		}
+	else if ( isdir )
+		sprintf(command,"%s %s %s",cmd,"-R",files[0]);
 	else
 		sprintf(command,"%s %s",cmd,files[0]);
+	ui_end_menu();
+	ui_print("Working...\nPlease wait...\n");
 	if (__system(command)) LOGE("%s\n",strerror(errno));
 	else ui_print("Success\n");
+	//LOGE("%s\n",command);
 	
 }
 			
@@ -2048,12 +2168,9 @@ void show_file_manager() {
                                 NULL 
     };
 
-    static char* list[] = { "COPY FILE", 
-                            "MOVE FILE",
-                            "DELETE FILE",
-                            "COPY DIR", 
-                            "MOVE DIR",
-                            "DELETE DIR",
+    static char* list[] = { "COPY", 
+                            "MOVE",
+                            "DELETE",
                             NULL
     };
     for(;;) {
@@ -2063,22 +2180,13 @@ void show_file_manager() {
 		switch (chosen_item)
 		{
 			case 0:
-				show_action_menu("cp -pf",2,"");
+				show_action_menu("cp -p -f",2,"");
 				break;
 			case 1:
 				show_action_menu("mv -f",2,"");
 				break;
 			case 2:
 				show_action_menu("rm -f",1,"");
-				break;
-			case 3:
-				show_action_menu("cp -Rpf",2,NULL);
-				break;
-			case 4:
-				show_action_menu("mv -f",2,NULL);
-				break;
-			case 5:
-				show_action_menu("rm -Rf",1,NULL);
 				break;
 		}
 	}

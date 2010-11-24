@@ -366,10 +366,12 @@ get_menu_selection(char** headers, char** items, int menu_only) {
     // We can't rely on /cache or /sdcard since they may not be available.
     int wrap_count = 0;
 
-    while (chosen_item < 0 && chosen_item != GO_BACK) {
+    while (chosen_item < 0 && chosen_item != GO_BACK && chosen_item != MENU_PRESSED) {
 		//ui_menu_select(); //Why was this not here?!
         int key = ui_wait_key();
         int visible = ui_text_visible();
+
+        //ui_print("Key: %d\n",key);
 
         int action = device_handle_key(key, visible);
         int old_selected = selected;
@@ -563,12 +565,12 @@ void start_os() {
             FILE* f;
             int err;
           
-                file_name = malloc(60 * sizeof(char));
-                strcpy(file_name,"/sdcard/");
-                strcat(file_name,os);
-                dir_name = malloc( (strlen(file_name)+1)*sizeof(char) );
-                strcpy(dir_name,file_name);
-                strcat(file_name,"/init.sh");
+			file_name = malloc(60 * sizeof(char));
+			strcpy(file_name,"/sdcard/");
+			strcat(file_name,os);
+			dir_name = malloc( (strlen(file_name)+1)*sizeof(char) );
+			strcpy(dir_name,file_name);
+                /*strcat(file_name,"/init.sh");
             
 			if (  ( f=fopen(file_name,"r") )  )	{
 				fclose(f); 
@@ -596,7 +598,28 @@ void start_os() {
 			else {
 				ui_print("\n%s not exists!\n",file_name);
 				err=1;
-			}
+			}*/
+			//New method
+			if ( !ensure_root_path_mounted("DATA:") ) {
+				if ( !ensure_root_path_mounted("SYSTEM:") ) {
+					strcat(file_name,"/init.rc");
+					if ( ( f=fopen(file_name,"r") ) ) {
+						fclose(f);
+						char cp_cmd[PATH_MAX];
+						sprintf(cp_cmd,"cp %s %s %s",file_name,"/recovery.rc","/recovery_hardkey.rc"); //Our init looks for recovery.rc when calling init binary under recovery
+						if ( !__system(cp_cmd) ) {
+							ui_print("done\nBooting New OS..\nPlease wait...\n");
+							ui_end_menu();
+							finish_recovery(NULL);
+							do_reboot=0;
+							if ( __system("/init") ) {
+								LOGE("Error booting system\n%s\n",strerror(errno));
+							}
+						} else LOGE("Can't copy init.rc\n%s\n",strerror(errno));
+					} else LOGE("Can't open init.rc\n%s\n",strerror(errno));
+				} else LOGE("Can't mount system image\n%s\n",strerror(errno));
+			} else LOGE("Can't mount data image\n%s\n",strerror(errno));
+						
 			free(dir_name);
 			free(file_name);
 }
