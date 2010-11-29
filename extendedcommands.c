@@ -2287,10 +2287,63 @@ void show_fs_check()
 	}
 }
 
-        
+void show_xm_menu()
+{
+	#define N 1
+	#define SF_I 0
+	#define SF "SoundFix"
+	static char* headers[] = {  "Xmister Extras",
+                                "",
+                                NULL
+    };
+    char** list=calloc(N+1,sizeof(char*));
+    FILE* f;
+    int sf;
+    if ( ensure_root_path_mounted("SYSTEM:") ) return print_and_error("Error mounting system!\n");
+    for ( ;; ) {
+		f=fopen("/system/xmister/soundfix","r");
+		if ( f == NULL ) {
+			f=fopen("/proc/xmister/soundfix","r");
+			if ( f == NULL ) sf=1;
+			else {
+				sf=fgetc(f);
+				fclose(f);
+				if ( sf < '0' || sf > '1' ) sf=1;
+				else sf=sf-'0';
+			}
+		}
+		else {
+			sf=fgetc(f);
+			fclose(f);
+			if ( sf < '0' || sf > '1' ) sf=1;
+			else sf=sf-'0';
+		}
+		if ( sf < 0 || sf > 1 ) sf=1;
+		if ( list[SF_I] != NULL ) free ( list[SF_I] );
+		list[SF_I]=calloc(strlen(SF)+4,sizeof(char));
+		sprintf(list[SF_I],"%s(%d)",SF,sf);
+		if ( chdir("/system/xmister") ) mkdir("/system/xmister",0777);
+		int chosen_item = get_menu_selection(headers, list, 0);
+        if (chosen_item == GO_BACK)
+            break;
+		switch (chosen_item)
+			{
+				case SF_I:
+					sf = sf ? 0 : 1;
+					f=fopen("/system/xmister/soundfix","w");
+					fputc(sf+'0',f);
+					fclose(f);
+					break;
+			}
+	}
+}
+    
+    
+     
 
 void show_advanced_menu()
 {
+#define XMISTER 1
     static char* headers[] = {  "Advanced and Debugging Menu",
                                 "",
                                 NULL
@@ -2303,6 +2356,9 @@ void show_advanced_menu()
                             "Recovery Password",
                             "Terminal",
                             "FS error check",
+#ifdef XMISTER                            
+                            "Xmister Extras",
+#endif                            
 #ifndef BOARD_HAS_SMALL_RECOVERY
                             "Partition SD Card",
                             "Fix Permissions",
@@ -2343,7 +2399,10 @@ void show_advanced_menu()
 			case 6:
 				show_fs_check();
 				break;
-            case 7:
+			case 7:
+				show_xm_menu();
+				break;
+            case 8:
             {
                 static char* ext_sizes[] = { "128M",
                                              "256M",
@@ -2384,7 +2443,7 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
-            case 8:
+            case 9:
             {
                 ensure_root_path_mounted("SYSTEM:");
                 ensure_root_path_mounted("DATA:");
