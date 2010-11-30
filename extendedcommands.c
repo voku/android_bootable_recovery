@@ -2289,53 +2289,87 @@ void show_fs_check()
 
 void show_xm_menu()
 {
-	#define N 1
-	#define SF_I 0
-	#define SF "SoundFix"
-	static char* headers[] = {  "Xmister Extras",
+	static char* headers[] = {  "Kernel Tuning",
                                 "",
                                 NULL
     };
-    char** list=calloc(N+1,sizeof(char*));
-    FILE* f;
-    int sf;
-    if ( ensure_root_path_mounted("SYSTEM:") ) return print_and_error("Error mounting system!\n");
-    for ( ;; ) {
-		f=fopen("/system/xmister/soundfix","r");
-		if ( f == NULL ) {
-			f=fopen("/proc/xmister/soundfix","r");
-			if ( f == NULL ) sf=1;
-			else {
-				sf=fgetc(f);
-				fclose(f);
-				if ( sf < '0' || sf > '1' ) sf=1;
-				else sf=sf-'0';
-			}
-		}
-		else {
-			sf=fgetc(f);
+    struct dirent **filelist = {0};
+	char *directory = ".";
+	int fcount = -1;
+	int i = 0;
+	int j = 0;
+	char* temp;
+	char line[5];
+	FILE* f;
+
+	if ( ensure_root_path_mounted("SYSTEM:") ) return print_and_error("Can't mount SYSTEM\n");
+
+	chdir("/proc/xmister");
+	
+	fcount = scandir(directory, &filelist, 0, alphasort);
+
+	char** list=malloc((fcount+1)*sizeof(char*));
+	
+	for(i = 0; i < fcount; ++i)  {
+		if ( strchr(filelist[i]->d_name,'.') != NULL ) continue;
+		list[j]=malloc( (strlen(filelist[i]->d_name)+10) * sizeof(char) );
+		strcpy(list[j], filelist[i]->d_name);
+		free(filelist[i]);
+		temp=malloc(sizeof(char)*(strlen(list[j])+strlen("/system/xmister/")+1));
+		sprintf(temp,"/system/xmister/%s",list[j]);
+		f=fopen(temp,"r");
+		if ( f == NULL ) f=fopen(list[j],"r");
+		if ( f == NULL ) return print_and_error("Can't open property!\n");
+		if ( fscanf(f,"%s",line) < 1 ) {
 			fclose(f);
-			if ( sf < '0' || sf > '1' ) sf=1;
-			else sf=sf-'0';
+			return print_and_error("Can't read property!\n");
 		}
-		if ( sf < 0 || sf > 1 ) sf=1;
-		if ( list[SF_I] != NULL ) free ( list[SF_I] );
-		list[SF_I]=calloc(strlen(SF)+4,sizeof(char));
-		sprintf(list[SF_I],"%s(%d)",SF,sf);
-		if ( chdir("/system/xmister") ) mkdir("/system/xmister",0777);
-		int chosen_item = get_menu_selection(headers, list, 0);
-        if (chosen_item == GO_BACK)
-            break;
-		switch (chosen_item)
-			{
-				case SF_I:
-					sf = sf ? 0 : 1;
-					f=fopen("/system/xmister/soundfix","w");
-					fputc(sf+'0',f);
-					fclose(f);
-					break;
-			}
+		fclose(f);
+		free(temp);
+		sprintf(list[j],"%s(%s)",list[j],line);
+		++j;
 	}
+	list[j]=NULL;
+	free(filelist);
+
+	for ( ;; ) {
+		int chosen_item = get_menu_selection(headers,list,0);
+		if ( chosen_item == GO_BACK ) break;
+		char buffer[PATH_MAX];
+		keyboard("New Value",buffer,PATH_MAX);
+		char* p = strchr(list[chosen_item],'(');
+		temp=calloc(strlen(list[chosen_item]),sizeof(char));
+		strncpy(temp,list[chosen_item],p-list[chosen_item]);
+		if ( (f=fopen(temp,"w")) == NULL ) return print_and_error("Can't open proc file for write!\n");
+		if ( fputs(buffer,f) < 0 ) {
+			fclose(f);
+			return print_and_error("Can't write proc file!\n");
+		}
+		fclose(f);
+
+		//Returning the proc file content
+		if ( (f=fopen(temp,"r")) == NULL ) return print_and_error("Can't open proc file for read!\n");
+		if ( fgets(line,5,f) == NULL ) {
+			fclose(f);
+			return print_and_error("Can't read proc file!\n");
+		}
+		fclose(f);
+		sprintf(list[chosen_item],"%s(%s)",temp,line);
+		char* temp2=malloc(sizeof(char)*(strlen(temp)+strlen("/system/xmister/")+1));
+		sprintf(temp2,"/system/xmister/%s",temp);
+		free(temp);
+		FILE* f=fopen(temp2,"w");
+		free(temp2);
+		if ( f == NULL ) return print_and_error("Can't open property for write!\n");
+		if ( fputs(line,f) < 0 ) {
+			fclose(f);
+			return print_and_error("Can't write property file!\n");
+		}
+		fclose(f);
+	}
+		
+	
+	chdir("/");
 }
     
     
@@ -2357,7 +2391,7 @@ void show_advanced_menu()
                             "Terminal",
                             "FS error check",
 #ifdef XMISTER                            
-                            "Xmister Extras",
+                            "Kernel tuning",
 #endif                            
 #ifndef BOARD_HAS_SMALL_RECOVERY
                             "Partition SD Card",
