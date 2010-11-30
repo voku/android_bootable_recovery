@@ -2036,11 +2036,7 @@ void show_fs_select(RootInfo* info)
 					sprintf(cmd,"/xbin/tar -x -f %s",backup);
 					pid_t pid = fork();
 					if (pid == 0) {
-						if (__system(cmd)) {
-							fprintf(stderr,"Can't restore:\n%s",strerror(errno));
-							_exit(2);
-						}
-						_exit(-1);
+						_exit(__system(cmd));
 					}
 
 					int status;
