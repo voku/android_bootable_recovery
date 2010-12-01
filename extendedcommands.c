@@ -2351,6 +2351,10 @@ void show_xm_menu()
 		}
 		fclose(f);
 		sprintf(list[chosen_item],"%s(%s)",temp,line);
+		if ( chdir("/system/xmister") ) {
+			if (mkdir("/system/xmister",0777) ) return print_and_error("Can't create driectory for properties!\n");
+		}
+		chdir("/proc/xmister");
 		char* temp2=malloc(sizeof(char)*(strlen(temp)+strlen("/system/xmister/")+1));
 		sprintf(temp2,"/system/xmister/%s",temp);
 		free(temp);
