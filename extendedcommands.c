@@ -2285,6 +2285,7 @@ void show_fs_check()
 
 void show_xm_menu()
 {
+	#define XM_SAVE_DIR "/data/misc/xmister/"
 	static char* headers[] = {  "Kernel Tuning",
                                 "",
                                 NULL
@@ -2298,7 +2299,15 @@ void show_xm_menu()
 	char line[5];
 	FILE* f;
 
-	if ( ensure_root_path_mounted("SYSTEM:") ) return print_and_error("Can't mount SYSTEM\n");
+	//Mount the partition we will actually use for properties
+	//if ( ensure_root_path_mounted("SYSTEM:") ) return print_and_error("Can't mount SYSTEM\n");
+	if ( ensure_root_path_mounted("DATA:") ) return print_and_error("Can't mount DATA\n");
+
+	if ( chdir(XM_SAVE_DIR) ) {
+		char cmd[PATH_MAX];
+		sprintf(cmd,"mkdir -p %s",XM_SAVE_DIR);
+		if ( __system(cmd) ) return print_and_error("Can't open property dir!\n");
+	}
 
 	chdir("/proc/xmister");
 	
@@ -2311,8 +2320,8 @@ void show_xm_menu()
 		list[j]=malloc( (strlen(filelist[i]->d_name)+10) * sizeof(char) );
 		strcpy(list[j], filelist[i]->d_name);
 		free(filelist[i]);
-		temp=malloc(sizeof(char)*(strlen(list[j])+strlen("/system/xmister/")+1));
-		sprintf(temp,"/system/xmister/%s",list[j]);
+		temp=malloc(sizeof(char)*(strlen(list[j])+strlen(XM_SAVE_DIR)+1));
+		sprintf(temp,"%s%s",XM_SAVE_DIR,list[j]);
 		f=fopen(temp,"r");
 		if ( f == NULL ) f=fopen(list[j],"r");
 		if ( f == NULL ) return print_and_error("Can't open property!\n");
@@ -2351,12 +2360,9 @@ void show_xm_menu()
 		}
 		fclose(f);
 		sprintf(list[chosen_item],"%s(%s)",temp,line);
-		if ( chdir("/system/xmister") ) {
-			if (mkdir("/system/xmister",0777) ) return print_and_error("Can't create driectory for properties!\n");
-		}
 		chdir("/proc/xmister");
-		char* temp2=malloc(sizeof(char)*(strlen(temp)+strlen("/system/xmister/")+1));
-		sprintf(temp2,"/system/xmister/%s",temp);
+		char* temp2=malloc(sizeof(char)*(strlen(temp)+strlen(XM_SAVE_DIR)+1));
+		sprintf(temp2,"%s%s",XM_SAVE_DIR,temp);
 		free(temp);
 		FILE* f=fopen(temp2,"w");
 		free(temp2);
