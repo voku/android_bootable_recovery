@@ -1965,6 +1965,9 @@ void show_fs_select(RootInfo* info)
 		if (chosen_item == GO_BACK)
             break;
         ui_end_menu();
+        char check_cmd[PATH_MAX];
+        sprintf(check_cmd,"cat /init.rc | grep -i 'mount %s %s'",list[chosen_item],info->device);
+        if ( __system(check_cmd) ) return print_and_error("Sorry, your kernel doesn't support the filesystem you've choosen.\n");
 		ui_print("\n-- This method can be dangerous!");
 		ui_print("\n-- %s to %s on %s",info->filesystem,list[chosen_item],info->name);
 		ui_print("\n-- It is going to be very long!");
