@@ -503,11 +503,11 @@ format_root_device(const char *root)
 		         LOGW("format: %s as %s\n", info->device, info->filesystem);
 	                if (strncmp(info->filesystem, "ext4",4) == 0) {					
 						///xbin/mke2fs -T ext4 -F -q -m 0 -b 4096 -O ^huge_file,extent /sdcard/cm6/data.img
-	                   char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m 0", "-b 4096", "-O ^huge_file,extent", info->device, NULL};
-	                   execv("/xbin/mke2fs", args);
+                           char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m", "0", "-b", "4096", "-O", "^huge_file,extent", info->device, NULL};
+	                   execv(args[0], args);
 	                } else {
-	                   char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m 0", "-b 4096", info->device, NULL};
-	                   execv("/xbin/mke2fs", args);
+                           char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m", "0", "-b", "4096", info->device, NULL};
+	                   execv(args[0], args);
 	                }
 	                LOGE("E:Can't run mke2fs format [%s]\n", strerror(errno));       
 		     } 
