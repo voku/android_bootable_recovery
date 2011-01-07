@@ -497,16 +497,14 @@ format_root_device(const char *root)
         pid_t pid = fork();
 		 if (pid == 0) {
 		     if (info->filesystem != NULL && strncmp(info->filesystem, "ext",3) == 0) {
-	                char fst[10];
-	                sprintf(fst,"-T %s",info->filesystem);
 	                create_mtab();
 		         LOGW("format: %s as %s\n", info->device, info->filesystem);
 	                if (strncmp(info->filesystem, "ext4",4) == 0) {					
 						///xbin/mke2fs -T ext4 -F -q -m 0 -b 4096 -O ^huge_file,extent /sdcard/cm6/data.img
-                           char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m", "0", "-b", "4096", "-O", "^huge_file,extent", info->device, NULL};
+                           char* args[] = {"/xbin/mke2fs", "-T", info->filesystem, "-F", "-q", "-m", "0", "-b", "4096", "-O", "^huge_file,extent", info->device, NULL};
 	                   execv(args[0], args);
 	                } else {
-                           char* args[] = {"/xbin/mke2fs", fst, "-F", "-q", "-m", "0", "-b", "4096", info->device, NULL};
+                           char* args[] = {"/xbin/mke2fs", "-T", info->filesystem, "-F", "-q", "-m", "0", "-b", "4096", info->device, NULL};
 	                   execv(args[0], args);
 	                }
 	                LOGE("E:Can't run mke2fs format [%s]\n", strerror(errno));       
