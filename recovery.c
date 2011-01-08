@@ -599,6 +599,15 @@ void start_os() {
 				ui_print("\n%s not exists!\n",file_name);
 				err=1;
 			}*/
+			//Fix for bug found by gotenks 
+			if (!chdir("/etc")) {
+			  chdir(("/"));
+			  if ( ensure_root_path_unmounted("SYSTEM:") ) //We don't want to "hurt" the real /system/etc dir in any case.
+			    return print_and_error("Please unmount system manually\n");
+			  unlink("/etc"); //Success only if it's a symlink(file)
+			  dirUnlinkHierarchy("/etc"); //Then it should be an empty dir
+			  symlink("/system/etc","/etc");
+			}
 			//New method
 			if ( !ensure_root_path_mounted("DATA:") ) {
 				if ( !ensure_root_path_mounted("SYSTEM:") ) {

@@ -106,7 +106,7 @@ void create_mtab() {
 		}
 		f=fopen("/etc/mtab","w");
 		if ( f != NULL ) fclose(f);
-	}
+	} else fclose(f);
 }
 
 int create_mknods(int n) {
