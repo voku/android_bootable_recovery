@@ -1050,6 +1050,8 @@ static int
 
         chosen_item = get_menu_selection(headers,files,0);
 
+        if (chosen_item == GO_BACK) break;
+
         if (chosen_item >= 0) {
             // turn off the menu, letting ui_print() to scroll output
             // on the screen.
